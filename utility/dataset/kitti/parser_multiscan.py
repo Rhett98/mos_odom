@@ -216,8 +216,8 @@ class SemanticKitti(Dataset):
         current_index = start_index + self.n_input_scans - 1  # this is used for multi-scan attach
         # current_index = start_index  # this is used for multi residual images
         if current_index > len(self.index_mapping)-1:
-            start_index += -1
-            current_index += -1
+            start_index += 1-self.n_input_scans
+            current_index += 1-self.n_input_scans
         current_pose = self.poses[seq][current_index]
         proj_full = torch.Tensor()
         trans_list = []
@@ -232,8 +232,6 @@ class SemanticKitti(Dataset):
 
             if self.use_residual:
                 for i in range(self.n_input_scans):
-                    # print(len(self.residual_files_1[seq]))
-                    # print("residual_file_" + str(i+1) + " = " + "self.residual_files_" + str(i+1) +" "+ str(seq) +" "+"["+str(index)+"]")
                     exec("residual_file_" + str(i+1) + " = " + "self.residual_files_" + str(i+1) + "[seq][index]")
 
             index_pose = self.poses[seq][index]
@@ -326,7 +324,7 @@ class SemanticKitti(Dataset):
                                proj_remission.unsqueeze(0).clone()]) # torch.Size([1, 64, 2048])
             proj = (proj - self.sensor_img_means[:, None, None]) / self.sensor_img_stds[:, None, None]
 
-            proj_full = torch.cat([proj_full, proj])
+            proj_full = torch.cat([proj_full, proj.view(1,proj.shape[0],proj.shape[1],proj.shape[2])])
 
         if self.use_normal:
             proj_full = torch.cat([proj_full, torch.from_numpy(scan.normal_map).clone().permute(2, 0, 1)]) # 5 + 3 = 8 channel
@@ -657,7 +655,7 @@ if __name__ == '__main__':
     for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
         # print(proj_in.shape, proj_mask.shape, proj_labels.shape, path_seq, path_name ,proj_range.shape, unproj_range.shape)
         # print(len(re_pose))
-        print(proj_labels.shape)
+        print(proj_in.shape)
     # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/08/poses.txt")
     # poses = np.array(load_poses(pose_file))
     # inv_frame0 = np.linalg.inv(poses[0])
