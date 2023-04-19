@@ -19,13 +19,13 @@ class CircularPad(torch.nn.Module):
 
 def get_quaternion_from_transformation_matrix(matrix, device='cpu'):
     rotation_matrix = torch.tensor(matrix[:3, :3], device=device)
-    return kornia.geometry.conversions.rotation_matrix_to_quaternion(rotation_matrix)
+    return kornia.geometry.conversions.rotation_matrix_to_quaternion(rotation_matrix,order=kornia.geometry.conversions.QuaternionCoeffOrder.WXYZ)
 
 def get_translation_from_transformation_matrix(matrix, device='cpu'):
     return torch.tensor(matrix[:3, -1], device=device)
 
 def quaternion_to_rot_matrix(quaternion):
-    return kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
+    return kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion, order=kornia.geometry.conversions.QuaternionCoeffOrder.WXYZ)
     
 def get_transformation_matrix_quaternion(translation, quaternion, device='cpu'):
         rotation_matrix = quaternion_to_rot_matrix(quaternion)
