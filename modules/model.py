@@ -45,7 +45,8 @@ class SematicNet(nn.Module):
         Returns:
             feature map
         """
-        current_range_image = x[:, :5, : ,:]
+        current_range_image = x[:,-1]
+        
         """
         sematic_feature = [
             [bsize, 64, 32, 1024],
@@ -137,12 +138,6 @@ class MosNet(nn.Module):
         # print('******')
         # print(sum(p.numel() for p in self.sematic.parameters())/1000000.0)
         # print(sum(p.numel() for p in self.motion.parameters())/ 1000000.0)
-        # print(sum(p.numel() for p in self.fusion_layer1.parameters())/1000000.0)
-        # print(sum(p.numel() for p in self.fusion_layer2.parameters())/ 1000000.0)
-        # print(sum(p.numel() for p in self.fusion_layer3.parameters())/1000000.0)
-        # print(sum(p.numel() for p in self.resBlock1.parameters())/ 1000000.0)
-        # print(sum(p.numel() for p in self.resBlock2.parameters())/ 1000000.0)
-        # print(sum(p.numel() for p in self.resBlock3.parameters())/ 1000000.0)
         
     def forward(self, time_seq, seg_labels, tran_labels, rot_labels):
         """
@@ -208,18 +203,13 @@ class MosNet(nn.Module):
 
 if __name__ == '__main__':
     from thop import profile
-    model = MosNet(3,'/home/yu/Resp/pretrained/pretrained/SalsaNext')
-    dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
-    flops, params = profile(model, (dummy_input))
+    # model = MosNet(3,'/home/yu/Resp/pretrained/pretrained/SalsaNext')
+    # dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
+    model = SematicNet('pretrained/SalsaNextEncoder')
+    # torch.save({'state_dict': model.state_dict()}, 'SalsaNextEncoder')
+    dummy_input = torch.randn(2, 3, 5, 64, 2048)
+    flops, params = profile(model, (dummy_input,))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
     # out = model(dummy_input)
     # # for i in range(len(out)):
     # #     print(out[i].shape)
-    # Ls = Lovasz_softmax(ignore=0) 
-    # nll_loss = nn.NLLLoss()
-    # out = F.softmax(torch.randn(1, 3 ,4, 4), dim=1)
-    # label = torch.zeros(1, 4, 4)
-    # # print()
-    # print(torch.log(out.clamp(min=1e-8)))
-    # print(Ls(out, label))
-    # print(nll_loss(torch.log(out.clamp(min=1e-8)), label.long()))
