@@ -284,16 +284,12 @@ class SalsaNext(nn.Module):
         downCntx = self.downCntx(x)
         downCntx = self.downCntx2(downCntx)
         downCntx = self.downCntx3(downCntx)
-        print(downCntx.shape)
+
         down0c, down0b = self.resBlock1(downCntx)
         down1c, down1b = self.resBlock2(down0c)
-        print(down1c.shape)
         down2c, down2b = self.resBlock3(down1c)
-        print(down2c.shape)
         down3c, down3b = self.resBlock4(down2c)
-        print(down3c.shape)
         down5c = self.resBlock5(down3c)
-        print(down5c.shape)
 
         up4e = self.upBlock1(down5c,down3b)
         up3e = self.upBlock2(up4e, down2b)
@@ -306,7 +302,7 @@ class SalsaNext(nn.Module):
         return logits
     
 class SalsaNextEncoder(nn.Module):
-    def __init__(self, nclasses=3, input_scan=2):
+    def __init__(self, nclasses=20, input_scan=1):
         super(SalsaNextEncoder, self).__init__()
 
         self.nclasses = nclasses
@@ -337,7 +333,7 @@ class SalsaNextEncoder(nn.Module):
     
 if __name__ == '__main__':
     from thop import profile
-    model = SalsaNextEncoder(3, 2)
+    model = SalsaNextEncoder(20, 1)
     dummy_input = torch.randn(1, 10, 64, 2048)
     flops, params = profile(model, (dummy_input,))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
