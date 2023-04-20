@@ -43,7 +43,7 @@ parser.add_argument(
 parser.add_argument(
     '--log', '-l',
     type=str,
-    default="None",
+    default=None,
     help='Directory to put the log data. Default: ~/logs/date+time')
 parser.add_argument(
     '--pretrained', '-p',
@@ -160,7 +160,7 @@ def main_worker(args):
     
     # optionally resume from a checkpoint
     if args.pretrained is not None:
-        model_path = args.pretrained + "/Mos_odom"
+        model_path = args.pretrained + "/Mos_odom.path.tar"
         if os.path.isfile(model_path):
             print("=> loading checkpoint '{}'".format(model_path))
             checkpoint = torch.load(model_path)
