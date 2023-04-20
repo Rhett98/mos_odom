@@ -251,7 +251,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
         
         # compute gradient and do SGD step
         optimizer.zero_grad()
-        loss.backward()
+        loss_sum.backward()
         optimizer.step()
         
         with torch.no_grad():
