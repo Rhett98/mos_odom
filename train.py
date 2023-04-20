@@ -236,7 +236,6 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
     for i, (in_vol, _, proj_labels, _, _, _, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
-        in_vol = torch.split(in_vol, 10, dim=1)
         in_vol = in_vol.cuda()
         proj_labels = proj_labels.cuda()
         tran_labels = tran_list[-1].cuda()
