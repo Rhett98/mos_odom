@@ -135,8 +135,25 @@ def main_worker(args):
     
     # infer learning rate before changing batch size
     init_lr = ARCH["train"]["lr"] * ARCH["train"]["batch_size"] / 256
-    
     epsilon_w = ARCH["train"]["epsilon_w"]
+    
+    optimizer = torch.optim.SGD(model.parameters(), init_lr,
+                                momentum=ARCH["train"]["momentum"],
+                                weight_decay=ARCH["train"]["w_decay"])
+    
+    # optionally resume from a checkpoint
+    if args.pretrained is not None:
+        if os.path.isfile(args.pretrained):
+            print("=> loading checkpoint '{}'".format(args.pretrained))
+            checkpoint = torch.load(args.pretrained)
+            start_epoch = checkpoint['epoch']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(args.pretrained, checkpoint['epoch']))
+        else:
+            print("=> no checkpoint found at '{}'".format(args.pretrained))
+    
     content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
     for cl, freq in DATA["content"].items():
         x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
@@ -148,38 +165,15 @@ def main_worker(args):
             loss_w[x_cl] = 0
     print("Loss weights from content: ", loss_w.data)
     
-    # define loss function (criterion) and optimizer
-    # criterion = []
-    # criterion.append(nn.NLLLoss(weight=loss_w).to(device))
-    # criterion.append(nn.L1Loss(reduction='mean'))
-    # criterion.append(Lovasz_softmax(ignore=0).to(device))
-    # # ls = Lovasz_softmax(ignore=0).to(device)
-    
-    optimizer = torch.optim.SGD(model.parameters(), init_lr,
-                                momentum=ARCH["train"]["momentum"],
-                                weight_decay=ARCH["train"]["w_decay"])
-    
-    # optionally resume from a checkpoint
-    if args.pretrained is not None:
-        if os.path.isfile(args.pretrained):
-            print("=> loading checkpoint '{}'".format(args.pretrained))
-            checkpoint = torch.load(args.pretrained)
-            args.start_epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.pretrained, checkpoint['epoch']))
-        else:
-            print("=> no checkpoint found at '{}'".format(args.pretrained))
-    
-    cudnn.benchmark = True
     # set train and valid evaluator
     ignore_class = []
     for i, w in enumerate(loss_w):
         if w < 1e-10:
             ignore_class.append(i)
             print("Ignoring class ", i, " in IoU evaluation")
-    evaluator = iouEval(parser.get_n_classes(),device, ignore_class)
+    evaluator = iouEval(parser.get_n_classes(), device, ignore_class)
+    
+    cudnn.benchmark = True
     
     # save train info
     best_train_iou = 0
@@ -217,7 +211,7 @@ def main_worker(args):
                     'arch': 'mos',
                     'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict(),
-                }, args.log, is_best=True, filename='/checkpoint_{:04d}.pth.tar'.format(epoch))
+                }, args.log, is_best=True, is_valid=True, filename='/checkpoint_{:04d}.pth.tar'.format(epoch))
     print("*" * 80)
     print("Train is finished!")
         
@@ -232,7 +226,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
     acc = AverageMeter('Acc', ':.4f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses],
+        [batch_time, losses, iou],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -256,6 +250,11 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
         loss_tran = loss['tran']
         loss_rot = loss['rot']
         
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
         with torch.no_grad():
             evaluator.reset()
             argmax = output.argmax(dim=1)
@@ -269,11 +268,6 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
         losses_rot.update(loss_rot.item(), in_vol.size(0))
         acc.update(accuracy.item(), in_vol.size(0))
         iou.update(jaccard.item(), in_vol.size(0))
-
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -369,14 +363,14 @@ def calculate_estimate(max_epoch, epoch, iter, len_data, data_time_t, batch_time
         estimate = int((data_time_t + batch_time_t) * (len_data * max_epoch - (iter + 1 + epoch * len_data)))
         return str(datetime.timedelta(seconds=estimate))
 
-def save_checkpoint(state, log_path, is_best, is_valid=False, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, log_path, is_best, is_valid=False, filename='/checkpoint.pth.tar'):
     path = log_path+filename
     torch.save(state, path)
     if is_best:
         if is_valid:
-            shutil.copyfile(path, 'model_valid_best.pth.tar')
+            shutil.copyfile(path, log_path+'/model_valid_best.pth.tar')
         else:
-            shutil.copyfile(path, 'model_best.pth.tar')
+            shutil.copyfile(path, log_path+'/model_train_best.pth.tar')
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -428,9 +422,6 @@ def adjust_learning_rate(optimizer, init_lr, epoch, max_epoch):
             param_group['lr'] = cur_lr
 
 if __name__ == '__main__':   
-    # main()
-    losses = AverageMeter('Losses', ':.4f')
-    losses.update(1)
-    losses.update(2)
-    print(losses.get_avg())
+    main()
+
     

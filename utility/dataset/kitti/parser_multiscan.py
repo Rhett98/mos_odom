@@ -215,7 +215,7 @@ class SemanticKitti(Dataset):
         seq, start_index = self.index_mapping[dataset_index]  # seq: '05' start_index: 1856
         current_index = start_index + self.n_input_scans - 1  # this is used for multi-scan attach
         # current_index = start_index  # this is used for multi residual images
-        if current_index > len(self.index_mapping)-1:
+        if current_index > len(self.poses[seq])-1:
             start_index += 1-self.n_input_scans
             current_index += 1-self.n_input_scans
         current_pose = self.poses[seq][current_index]

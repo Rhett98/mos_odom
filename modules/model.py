@@ -144,11 +144,8 @@ class MosNet(nn.Module):
         time_seq: shape [bsize, n, c, h, w]
         
         """
-        # split the input data to current range image (5 channel) 
-        current_range_image = torch.squeeze(time_seq[:, -1 :5, : ,:], dim=1)
-        
         ###### the Encoder for current image to extract sematic feature ######
-        x = self.sematic(current_range_image)  # [bsize, 256, 4, 128]
+        x = self.sematic(time_seq)  # [bsize, 256, 4, 128]
         
         ###### the Encoder for image sequences to extract motion feature ######
         y, translation, rotation = self.motion(time_seq) 
@@ -203,12 +200,12 @@ class MosNet(nn.Module):
 
 if __name__ == '__main__':
     from thop import profile
-    # model = MosNet(3,'/home/yu/Resp/pretrained/pretrained/SalsaNext')
-    # dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
-    model = SematicNet('pretrained/SalsaNextEncoder')
+    model = MosNet(3,'pretrained/SalsaNextEncoder')
+    dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
+    # model = SematicNet('pretrained/SalsaNextEncoder')
     # torch.save({'state_dict': model.state_dict()}, 'SalsaNextEncoder')
-    dummy_input = torch.randn(2, 3, 5, 64, 2048)
-    flops, params = profile(model, (dummy_input,))
+    # dummy_input = torch.randn(2, 3, 5, 64, 2048)
+    flops, params = profile(model, (dummy_input))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
     # out = model(dummy_input)
     # # for i in range(len(out)):
