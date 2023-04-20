@@ -43,7 +43,7 @@ parser.add_argument(
 parser.add_argument(
     '--log', '-l',
     type=str,
-    default="output",
+    default="None",
     help='Directory to put the log data. Default: ~/logs/date+time')
 parser.add_argument(
     '--pretrained', '-p',
@@ -54,8 +54,11 @@ parser.add_argument(
 
 def main():
     FLAGS, unparsed = parser.parse_known_args()
-    FLAGS.log = FLAGS.log + '/logs/' + datetime.datetime.now().strftime("%Y-%-m-%d-%H:%M")
-    
+    if FLAGS.log is None and FLAGS.pretrained is not None:
+        FLAGS.log = FLAGS.pretrained
+    if FLAGS.log is None and FLAGS.pretrained is None:
+        FLAGS.log = 'output/logs/' + datetime.datetime.now().strftime("%Y-%-m-%d-%H:%M")
+         
     # open arch config file
     try:
         print("Opening arch config file %s" % FLAGS.arch_cfg)
@@ -106,8 +109,22 @@ def main_worker(args):
      
     start_epoch = 0
     max_epoch = ARCH["train"]["max_epochs"]
-    tb_logger = Logger(args.log)
+    tb_logger = Logger(args.log + "/tb")
     device = 'cuda'
+    info = {"train_loss_sum": 0,
+            "train_loss_seg": 0,
+            "train_loss_tran": 0,
+            "train_loss_rot": 0,
+            "train_acc": 0,
+            "train_iou": 0,
+            "valid_loss_sum": 0,
+            "valid_loss_seg": 0,
+            "valid_loss_tran": 0,
+            "valid_loss_rot": 0,
+            "valid_acc": 0,
+            "valid_iou": 0,
+            "best_train_iou": 0,
+            "best_val_iou": 0}
     
     # Data loading code
     parser = Parser(root=args.dataset,
@@ -143,16 +160,17 @@ def main_worker(args):
     
     # optionally resume from a checkpoint
     if args.pretrained is not None:
-        if os.path.isfile(args.pretrained):
-            print("=> loading checkpoint '{}'".format(args.pretrained))
-            checkpoint = torch.load(args.pretrained)
+        model_path = args.pretrained + "/Mos_odom"
+        if os.path.isfile(model_path):
+            print("=> loading checkpoint '{}'".format(model_path))
+            checkpoint = torch.load(model_path)
             start_epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.pretrained, checkpoint['epoch']))
+                  .format(model_path, checkpoint['epoch']))
         else:
-            print("=> no checkpoint found at '{}'".format(args.pretrained))
+            print("=> no checkpoint found in '{}'".format(args.pretrained))
     
     content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
     for cl, freq in DATA["content"].items():
@@ -191,19 +209,19 @@ def main_worker(args):
                 'arch': 'mos',
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, args.log, is_best=True, filename='/checkpoint_{:04d}.pth.tar'.format(epoch))
+            }, args.log, suffix='_train_best')
         else:
             save_checkpoint({
                 'epoch': epoch + 1,
                 'arch': 'mos',
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, args.log, is_best=False, filename='/checkpoint_new.pth.tar')
+            }, args.log, suffix='')
             
         if epoch % ARCH["train"]["report_epoch"] == 0:
             # evaluate on validation set
             print("*" * 70)
-            valid_iou = validate(valid_loader, model, evaluator, epoch, tb_logger)
+            valid_iou = validate(valid_loader, model, evaluator, parser.get_xentropy_class_string, epoch, tb_logger)
             if valid_iou > best_valid_iou:
                 best_valid_iou = valid_iou
                 save_checkpoint({
@@ -211,9 +229,9 @@ def main_worker(args):
                     'arch': 'mos',
                     'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict(),
-                }, args.log, is_best=True, is_valid=True, filename='/checkpoint_{:04d}.pth.tar'.format(epoch))
+                }, args.log, suffix='_valid_best')
     print("*" * 80)
-    print("Train is finished!")
+    print('Finished Training')
         
 def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -287,7 +305,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
     return iou.avg
 
     
-def validate(val_loader, model, evaluator, epoch, logger):
+def validate(val_loader, model, evaluator, class_func, epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
@@ -327,6 +345,11 @@ def validate(val_loader, model, evaluator, epoch, logger):
             evaluator.addBatch(argmax, proj_labels)
             accuracy = evaluator.getacc()
             jaccard, class_jaccard = evaluator.getIoU()
+            
+            # print also classwise
+            for i, jacc in enumerate(class_jaccard):
+                print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+                    i=i, class_str=class_func(i), jacc=jacc))
                 
             losses.update(loss_sum.item(), in_vol.size(0))
             losses_seg.update(loss_seg.item(), in_vol.size(0))
@@ -362,14 +385,16 @@ def calculate_estimate(max_epoch, epoch, iter, len_data, data_time_t, batch_time
         estimate = int((data_time_t + batch_time_t) * (len_data * max_epoch - (iter + 1 + epoch * len_data)))
         return str(datetime.timedelta(seconds=estimate))
 
-def save_checkpoint(state, log_path, is_best, is_valid=False, filename='/checkpoint.pth.tar'):
-    path = log_path+filename
-    torch.save(state, path)
-    if is_best:
-        if is_valid:
-            shutil.copyfile(path, log_path+'/model_valid_best.pth.tar')
-        else:
-            shutil.copyfile(path, log_path+'/model_train_best.pth.tar')
+def save_checkpoint(state, logdir, suffix=""):
+    # Save the weights
+    torch.save(state, logdir +
+               "/Mos_odom" + suffix + '.pth.tar')
+
+def save_to_log(logdir, logfile, message):
+    f = open(logdir + '/' + logfile, "a")
+    f.write(message + '\n')
+    f.close()
+    return
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
