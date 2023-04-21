@@ -111,20 +111,6 @@ def main_worker(args):
     max_epoch = ARCH["train"]["max_epochs"]
     tb_logger = Logger(args.log + "/tb")
     device = 'cuda'
-    info = {"train_loss_sum": 0,
-            "train_loss_seg": 0,
-            "train_loss_tran": 0,
-            "train_loss_rot": 0,
-            "train_acc": 0,
-            "train_iou": 0,
-            "valid_loss_sum": 0,
-            "valid_loss_seg": 0,
-            "valid_loss_tran": 0,
-            "valid_loss_rot": 0,
-            "valid_acc": 0,
-            "valid_iou": 0,
-            "best_train_iou": 0,
-            "best_val_iou": 0}
     
     # Data loading code
     parser = Parser(root=args.dataset,
@@ -145,9 +131,26 @@ def main_worker(args):
     train_loader = parser.get_train_set()
     valid_loader = parser.get_valid_set()
     
+    content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
+    for cl, freq in DATA["content"].items():
+        x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
+        content[x_cl] += freq
+    loss_w = 1 / (content + epsilon_w)  # get weights
+    for x_cl, w in enumerate(loss_w):  # ignore the ones necessary to ignore
+        if DATA["learning_ignore"][x_cl]:
+            # don't weigh
+            loss_w[x_cl] = 0
+    print("Loss weights from content: ", loss_w.data)
+    
+    ignore_class = []
+    for i, w in enumerate(loss_w):
+        if w < 1e-10:
+            ignore_class.append(i)
+            print("Ignoring class ", i, " in IoU evaluation")
+    
     # create model
     print("=> creating model '{}'".format(args.arch_cfg))
-    model = MosNet(3,'pretrained/SalsaNextEncoder')
+    model = MosNet(3,'pretrained/SalsaNextEncoder',weight=loss_w)
     model.cuda()
     
     # infer learning rate before changing batch size
@@ -164,7 +167,7 @@ def main_worker(args):
         if os.path.isfile(model_path):
             print("=> loading checkpoint '{}'".format(model_path))
             checkpoint = torch.load(model_path)
-            start_epoch = checkpoint['epoch']
+            start_epoch = checkpoint['epoch'] + 1
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
@@ -172,23 +175,7 @@ def main_worker(args):
         else:
             print("=> no checkpoint found in '{}'".format(args.pretrained))
     
-    content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
-    for cl, freq in DATA["content"].items():
-        x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
-        content[x_cl] += freq
-    loss_w = 1 / (content + epsilon_w)  # get weights
-    for x_cl, w in enumerate(loss_w):  # ignore the ones necessary to ignore
-        if DATA["learning_ignore"][x_cl]:
-            # don't weigh
-            loss_w[x_cl] = 0
-    print("Loss weights from content: ", loss_w.data)
-    
     # set train and valid evaluator
-    ignore_class = []
-    for i, w in enumerate(loss_w):
-        if w < 1e-10:
-            ignore_class.append(i)
-            print("Ignoring class ", i, " in IoU evaluation")
     evaluator = iouEval(parser.get_n_classes(), device, ignore_class)
     
     cudnn.benchmark = True

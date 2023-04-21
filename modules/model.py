@@ -106,13 +106,14 @@ class MotionNet(nn.Module):
         translation = self.fully_connected_translation(feature)
         rotation = rotation / torch.norm(rotation)
         return feature_list , translation, rotation
+        # return translation
 
 
 class MosNet(nn.Module):
-    def __init__(self, nclasses=3, pretrain = None):
+    def __init__(self, nclasses=3, pretrain=None, weight=None):
         super(MosNet,self).__init__()
         # define loss function
-        self.nll_loss = nn.NLLLoss()
+        self.nll_loss = nn.NLLLoss(weight=weight)
         self.l1_loss = nn.L1Loss(reduction='mean')
         self.Ls = Lovasz_softmax(ignore=0)
         self.uncertainty_loss = UncertaintyLoss(3)
@@ -197,16 +198,19 @@ class MosNet(nn.Module):
         loss['rot'] = loss_rot
         loss['sum'] = loss_sum
         return loss, logits, translation, rotation
+        # return logits
 
 if __name__ == '__main__':
     from thop import profile
-    model = MosNet(3,'pretrained/SalsaNextEncoder')
-    dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
-    # model = SematicNet('pretrained/SalsaNextEncoder')
-    # torch.save({'state_dict': model.state_dict()}, 'SalsaNextEncoder')
-    # dummy_input = torch.randn(2, 3, 5, 64, 2048)
-    flops, params = profile(model, (dummy_input))
-    print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
-    # out = model(dummy_input)
-    # # for i in range(len(out)):
-    # #     print(out[i].shape)
+    model1 = MosNet(3,'pretrained/SalsaNextEncoder')
+    dummy_input1 = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
+    # model2 = SematicNet('pretrained/SalsaNextEncoder')
+    # # torch.save({'state_dict': model.state_dict()}, 'SalsaNextEncoder')
+    # dummy_input2 = torch.randn(1, 3, 5, 64, 2048)
+    # model3 = MotionNet(3)
+    # dummy_input3 = torch.randn(1, 3, 5, 64, 2048)
+    # flops, params = profile(model, (dummy_input))
+    # print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
+    # with SummaryWriter(comment='MosNet') as w1:
+    #     w1.add_graph(model1, (dummy_input1))
+    
