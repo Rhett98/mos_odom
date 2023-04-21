@@ -131,6 +131,10 @@ def main_worker(args):
     train_loader = parser.get_train_set()
     valid_loader = parser.get_valid_set()
     
+    # infer learning rate before changing batch size
+    init_lr = ARCH["train"]["lr"] * ARCH["train"]["batch_size"] / 256
+    epsilon_w = ARCH["train"]["epsilon_w"]
+    
     content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
     for cl, freq in DATA["content"].items():
         x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
@@ -152,10 +156,6 @@ def main_worker(args):
     print("=> creating model '{}'".format(args.arch_cfg))
     model = MosNet(3,'pretrained/SalsaNextEncoder',weight=loss_w)
     model.cuda()
-    
-    # infer learning rate before changing batch size
-    init_lr = ARCH["train"]["lr"] * ARCH["train"]["batch_size"] / 256
-    epsilon_w = ARCH["train"]["epsilon_w"]
     
     optimizer = torch.optim.SGD(model.parameters(), init_lr,
                                 momentum=ARCH["train"]["momentum"],
