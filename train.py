@@ -154,10 +154,15 @@ def main_worker(args):
     
     # create model
     print("=> creating model '{}'".format(args.arch_cfg))
-    model = MosNet(3,'pretrained/SalsaNextEncoder',weight=loss_w)
-    model.cuda()
+    with torch.no_grad():
+        model = MosNet(3,'pretrained/SalsaNextEncoder',weight_loss=loss_w,freeze_sematic=False)
+    if torch.cuda.is_available():
+        model.cuda()
+        cudnn.benchmark = True
+        cudnn.fastest = True
     
-    optimizer = torch.optim.SGD(model.parameters(), init_lr,
+    optimizer = torch.optim.SGD([{'params': model.parameters()}],
+                                init_lr,
                                 momentum=ARCH["train"]["momentum"],
                                 weight_decay=ARCH["train"]["w_decay"])
     
@@ -300,6 +305,7 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
     losses_tran = AverageMeter('Loss_tran', ':.4f')
     losses_rot = AverageMeter('Loss_rot', ':.4f')
     iou = AverageMeter('Iou', ':.4f')
+    iou_moving = AverageMeter('Iou_moving', ':.4f')
     acc = AverageMeter('Acc', ':.4f')
 
     # switch to evaluate mode
@@ -327,16 +333,12 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             loss_tran = loss['tran']
             loss_rot = loss['rot']
             
+            # measure accuracy and record loss
             evaluator.reset()
             argmax = output.argmax(dim=1)
             evaluator.addBatch(argmax, proj_labels)
             accuracy = evaluator.getacc()
             jaccard, class_jaccard = evaluator.getIoU()
-            
-            # print also classwise
-            for i, jacc in enumerate(class_jaccard):
-                print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
-                    i=i, class_str=class_func(i), jacc=jacc))
                 
             losses.update(loss_sum.item(), in_vol.size(0))
             losses_seg.update(loss_seg.item(), in_vol.size(0))
@@ -344,6 +346,7 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             losses_rot.update(loss_rot.item(), in_vol.size(0))
             acc.update(accuracy.item(), in_vol.size(0))
             iou.update(jaccard.item(), in_vol.size(0))
+            iou_moving.update(class_jaccard.item()[-1], in_vol.size(0))
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -356,15 +359,20 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
     logger.add_scalar('valid_loss_rot', losses_rot.avg, epoch)
     logger.add_scalar('valid_acc', acc.avg, epoch)
     logger.add_scalar('valid_iou', iou.avg, epoch)
+    logger.add_scalar('valid_iou_moving', iou_moving.avg, epoch)
     
     print('Validation set:\n'
                 'Time avg per batch {batch_time.avg:.3f}\n'
                 'Loss avg {loss.avg:.4f}\n'
                 'Acc avg {acc.avg:.3f}\n'
-                'IoU avg {iou.avg:.3f}'.format(batch_time=batch_time,
-                                                loss=losses,
-                                                acc=acc,
-                                                iou=iou))
+                'mIoU avg {iou.avg:.3f}'
+                'Iou_moving avg {iou_moving.avg:.3f}\n'
+                .format(batch_time =batch_time,
+                                    loss=losses,
+                                    acc=acc,
+                                    iou=iou,
+                                    iou_moving=iou_moving
+                                    ))
     return iou.avg
     
 

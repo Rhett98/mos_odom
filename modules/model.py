@@ -49,11 +49,10 @@ class SematicNet(nn.Module):
         
         """
         sematic_feature = [
-            [bsize, 64, 32, 1024],
-            [bsize, 128, 16, 512],
-            [bsize, 256, 8, 256],
-            [bsize, 256, 4, 128],
-            [bsize, 256, 4, 128]]
+            down0b, down1b,
+            layer1:[bsize, 128, 16, 512],
+            layer2:[bsize, 256, 8, 256],
+            layer4:[bsize, 256, 4, 128]]
         """
         sematic_feature = self.sematic_encoder(current_range_image)
         return sematic_feature  
@@ -110,16 +109,16 @@ class MotionNet(nn.Module):
 
 
 class MosNet(nn.Module):
-    def __init__(self, nclasses=3, pretrain=None, weight=None):
+    def __init__(self, nclasses=3, pretrain=None, weight_loss=None, freeze_sematic=True):
         super(MosNet,self).__init__()
         # define loss function
-        self.nll_loss = nn.NLLLoss(weight=weight)
+        self.nll_loss = nn.NLLLoss(weight=weight_loss)
         self.l1_loss = nn.L1Loss(reduction='mean')
         self.Ls = Lovasz_softmax(ignore=0)
         self.uncertainty_loss = UncertaintyLoss(3)
         
         # define layer
-        self.sematic = SematicNet(pretrain)
+        self.sematic = SematicNet(pretrain,freeze_base=freeze_sematic)
         self.motion = MotionNet()
         
         self.fusion_layer1 = ResBlockDP(320, 128, 0.2, pooling=False)
@@ -154,7 +153,7 @@ class MosNet(nn.Module):
         ###### fuse 2 specific branches ######
         # resdual from sematic-net
         down0b, down1b = x[0], x[1]
-        # s-layer1:[bsize, 128, 16, 512] + m-layer0:[bsize, 64, 5, 16, 512]
+        # s-layer1:[bsize, 128, 16, 512] + m-layer0:[bsize, 64, 3, 16, 512]
         s1 = x[2]
         m1 = y[0].view(y[0].shape[0], y[0].shape[1]*y[0].shape[2], y[0].shape[3], y[0].shape[4])
         # [1, 320, 16, 512] -> [1, 32, 16, 512]
@@ -209,8 +208,8 @@ if __name__ == '__main__':
     # dummy_input2 = torch.randn(1, 3, 5, 64, 2048)
     # model3 = MotionNet(3)
     # dummy_input3 = torch.randn(1, 3, 5, 64, 2048)
-    # flops, params = profile(model, (dummy_input))
-    # print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
+    flops, params = profile(model1, (dummy_input1))
+    print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
     # with SummaryWriter(comment='MosNet') as w1:
     #     w1.add_graph(model1, (dummy_input1))
     
