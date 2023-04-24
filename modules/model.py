@@ -24,12 +24,8 @@ class SematicNet(nn.Module):
         self.sematic_encoder = SalsaNextEncoder(nclasses, input_scan)
         if pretrain_path !=None:
             checkpoint = torch.load(pretrain_path)
-            state_dict = self.sematic_encoder.state_dict()
-            pretrained_dict = checkpoint["state_dict"]
-            for key in state_dict:
-                if key in pretrained_dict:
-                    state_dict[key] = pretrained_dict[key]
-            self.sematic_encoder.load_state_dict(state_dict, strict=True)
+            checkpoint_dict = checkpoint["state_dict"]
+            self.sematic_encoder.load_state_dict(checkpoint_dict, strict=True)
             if freeze_base:
                 for param in self.sematic_encoder.parameters():
                     param.requires_grad = False   
@@ -145,11 +141,13 @@ class MosNet(nn.Module):
         
         """
         ###### the Encoder for current image to extract sematic feature ######
-        x = self.sematic(time_seq)  # [bsize, 256, 4, 128]
+        x = self.sematic(time_seq)  
+        # x: [bsize, 256, 4, 128]
         
         ###### the Encoder for image sequences to extract motion feature ######
         y, translation, rotation = self.motion(time_seq) 
-    
+        # y:list[[],[],[]]; translation: [bsize, 3]; rotation: [bsize, 4]
+        
         ###### fuse 2 specific branches ######
         # resdual from sematic-net
         down0b, down1b = x[0], x[1]
@@ -201,15 +199,32 @@ class MosNet(nn.Module):
 
 if __name__ == '__main__':
     from thop import profile
-    model1 = MosNet(3,'pretrained/SalsaNextEncoder')
-    dummy_input1 = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
-    # model2 = SematicNet('pretrained/SalsaNextEncoder')
-    # # torch.save({'state_dict': model.state_dict()}, 'SalsaNextEncoder')
-    # dummy_input2 = torch.randn(1, 3, 5, 64, 2048)
+    # model1 = MosNet(3,'pretrained/SalsaNextEncoder')
+    # dummy_input1 = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
+    model2 = SematicNet('pretrained/SalsaNextEncoder',1)
+    dummy_input2 = torch.randn(1, 3, 5, 64, 2048)
     # model3 = MotionNet(3)
     # dummy_input3 = torch.randn(1, 3, 5, 64, 2048)
-    flops, params = profile(model1, (dummy_input1))
+    flops, params = profile(model2, (dummy_input2,))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
     # with SummaryWriter(comment='MosNet') as w1:
     #     w1.add_graph(model1, (dummy_input1))
     
+    ###### save salsanext-encoder model
+    # model = SalsaNextEncoder(20, 1)
+    # checkpoint = torch.load('/home/yu/Resp/pretrained/pretrained/SalsaNext')
+    # state_dict = model.state_dict()
+    # pretrained_dict = checkpoint["state_dict"]
+    # for key in state_dict:
+    #     if 'module.'+key in pretrained_dict:
+    #         state_dict[key] = pretrained_dict['module.'+key]
+    #     # if key in pretrained_dict:
+    #     #     state_dict[key] = pretrained_dict[key]
+    #     else:
+    #         print('checkpoint layer name is wrong!!!')
+    # model.load_state_dict(state_dict, strict=True)
+    # torch.save({'state_dict': model.state_dict()}, 'pretrained/SalsaNextEncoder')
+    
+    # x = torch.randn(1, 3, 5, 64, 2048)
+    # c = x[:,-1]
+    # print(c.shape)
