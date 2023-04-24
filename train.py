@@ -160,11 +160,18 @@ def main_worker(args):
         model.cuda()
         cudnn.benchmark = True
         cudnn.fastest = True
-    
-    optimizer = torch.optim.SGD([{'params': model.parameters()}],
-                                lr=ARCH["train"]["lr"] ,
-                                momentum=ARCH["train"]["momentum"],
-                                weight_decay=ARCH["train"]["w_decay"])
+    if ARCH["train"]["optimizer"] == "SGD":
+        optimizer = torch.optim.SGD([{'params': model.parameters()}],
+                                    lr=ARCH["train"]["lr"] ,
+                                    momentum=ARCH["train"]["momentum"],
+                                    weight_decay=ARCH["train"]["w_decay"])
+    elif ARCH["train"]["optimizer"] == "Adam":
+        optimizer = torch.optim.Adam([{'params': model.parameters()}],
+                                    lr=ARCH["train"]["lr"] ,
+                                    momentum=ARCH["train"]["momentum"],
+                                    weight_decay=ARCH["train"]["w_decay"])
+    else:
+        raise NotImplementedError
     
     # Use warmup learning rate
     # post decay and step sizes come in epochs and we want it in steps
@@ -172,10 +179,10 @@ def main_worker(args):
     up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
     final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
     scheduler = warmupLR(optimizer=optimizer,
-                                lr=ARCH["train"]["lr"],
-                                warmup_steps=up_steps,
-                                momentum=ARCH["train"]["momentum"],
-                                decay=final_decay)
+                        lr=ARCH["train"]["lr"],
+                        warmup_steps=up_steps,
+                        momentum=ARCH["train"]["momentum"],
+                        decay=final_decay)
     
     # optionally resume from a checkpoint
     if args.pretrained is not None:

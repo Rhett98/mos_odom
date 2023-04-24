@@ -2,7 +2,8 @@
 # training parameters
 ################################################################################
 train:
-  loss: "xentropy"       # must be either xentropy or iou
+  loss: "xentropy"      # must be either xentropy or iou
+  optimizer: "SDG"       # SDG or Adam
   max_epochs: 30
   lr: 0.01               # sgd learning rate
   wup_epochs: 1          # warmup during first XX epochs (can be float)
