@@ -21,6 +21,7 @@ from tensorboardX import SummaryWriter as Logger
 from utility.dataset.kitti.parser_multiscan import Parser
 from utility.ioueval import iouEval
 from modules.model import MosNet
+from utility.warmupLR import *
 
 
 parser = argparse.ArgumentParser(description='Training')
@@ -166,6 +167,17 @@ def main_worker(args):
                                 momentum=ARCH["train"]["momentum"],
                                 weight_decay=ARCH["train"]["w_decay"])
     
+    # Use warmup learning rate
+    # post decay and step sizes come in epochs and we want it in steps
+    steps_per_epoch = parser.get_train_size()
+    up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
+    final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
+    scheduler = warmupLR(optimizer=optimizer,
+                                lr=ARCH["train"]["lr"],
+                                warmup_steps=up_steps,
+                                momentum=ARCH["train"]["momentum"],
+                                decay=final_decay)
+    
     # optionally resume from a checkpoint
     if args.pretrained is not None:
         model_path = args.pretrained + "/Mos_odom.path.tar"
@@ -175,6 +187,7 @@ def main_worker(args):
             start_epoch = checkpoint['epoch'] + 1
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
+            scheduler.load_state_dict(checkpoint['scheduler'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(model_path, checkpoint['epoch']))
         else:
@@ -189,9 +202,8 @@ def main_worker(args):
     best_train_iou = 0
     best_valid_iou = 0
     for epoch in range(start_epoch, max_epoch):
-        adjust_learning_rate(optimizer, init_lr, epoch, max_epoch)
         # train for one epoch
-        train_iou = train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, tb_logger)
+        train_iou = train_epoch(train_loader, model, optimizer, evaluator, scheduler, epoch, max_epoch, tb_logger)
         
         # checkpoint save
         if train_iou > best_train_iou:
@@ -201,6 +213,7 @@ def main_worker(args):
                 'arch': 'mos',
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
+                'scheduler': scheduler.state_dict()
             }, args.log, suffix='_train_best')
         else:
             save_checkpoint({
@@ -208,6 +221,7 @@ def main_worker(args):
                 'arch': 'mos',
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
+                'scheduler': scheduler.state_dict()
             }, args.log, suffix='')
             
         if epoch % ARCH["train"]["report_epoch"] == 0:
@@ -221,11 +235,12 @@ def main_worker(args):
                     'arch': 'mos',
                     'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict(),
+                    'scheduler': scheduler.state_dict()
                 }, args.log, suffix='_valid_best')
     print("*" * 80)
     print('Finished Training')
         
-def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, logger):
+def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
@@ -285,6 +300,8 @@ def train_epoch(train_loader, model, optimizer, evaluator, epoch, max_epoch, log
         if i % 20 == 0:
             progress.display(i)
             print('train time left: ',calculate_estimate(max_epoch,epoch,i,len(train_loader),data_time.avg, batch_time.avg))
+        # step scheduler
+        scheduler.step()
             
     # tensorboard logger
     logger.add_scalar('train_loss_sum', losses.avg, epoch)
@@ -346,7 +363,7 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             losses_rot.update(loss_rot.item(), in_vol.size(0))
             acc.update(accuracy.item(), in_vol.size(0))
             iou.update(jaccard.item(), in_vol.size(0))
-            iou_moving.update(class_jaccard.item()[-1], in_vol.size(0))
+            iou_moving.update(class_jaccard[-1].item(), in_vol.size(0))
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -430,15 +447,6 @@ class ProgressMeter(object):
         num_digits = len(str(num_batches // 1))
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
-
-def adjust_learning_rate(optimizer, init_lr, epoch, max_epoch):
-    """Decay the learning rate based on schedule"""
-    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / max_epoch))
-    for param_group in optimizer.param_groups:
-        if 'fix_lr' in param_group and param_group['fix_lr']:
-            param_group['lr'] = init_lr
-        else:
-            param_group['lr'] = cur_lr
 
 if __name__ == '__main__':   
     main()
