@@ -160,7 +160,7 @@ def main_worker(args):
         model.cuda()
         cudnn.benchmark = True
         cudnn.fastest = True
-    if ARCH["train"]["optimizer"] == "SGD":
+    if ARCH["train"]["optimizer"] == "SDG":
         optimizer = torch.optim.SGD([{'params': model.parameters()}],
                                     lr=ARCH["train"]["lr"] ,
                                     momentum=ARCH["train"]["momentum"],
