@@ -155,20 +155,20 @@ def main_worker(args):
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
         model = MosNet(ARCH["train"]["n_input_scans"],ARCH["train"]["salsanext_path"],
-                       weight_loss=loss_w, freeze_sematic=ARCH["train"]["freeze_sematic"])
+                       weight_loss=loss_w.double(), freeze_sematic=ARCH["train"]["freeze_sematic"],
+                       motion_backbone=ARCH["train"]["motion_backbone"])
     if torch.cuda.is_available():
         model.cuda()
         cudnn.benchmark = True
         cudnn.fastest = True
     if ARCH["train"]["optimizer"] == "SDG":
         optimizer = torch.optim.SGD([{'params': model.parameters()}],
-                                    lr=ARCH["train"]["lr"] ,
+                                    lr=ARCH["train"]["lr"],
                                     momentum=ARCH["train"]["momentum"],
                                     weight_decay=ARCH["train"]["w_decay"])
     elif ARCH["train"]["optimizer"] == "Adam":
         optimizer = torch.optim.Adam([{'params': model.parameters()}],
-                                    lr=ARCH["train"]["lr"] ,
-                                    momentum=ARCH["train"]["momentum"],
+                                    lr=ARCH["train"]["lr"],
                                     weight_decay=ARCH["train"]["w_decay"])
     else:
         raise NotImplementedError
@@ -349,7 +349,7 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             rot_labels = rot_list[-1].cuda()
             
             # compute output and loss
-            loss, output, tran, rot = model(in_vol, proj_labels, tran_labels, rot_labels)
+            loss, output, _, _ = model(in_vol, proj_labels, tran_labels, rot_labels)
             
             loss_sum = loss['sum']
             loss_seg = loss['seg']
@@ -357,7 +357,6 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             loss_rot = loss['rot']
             
             # measure accuracy and record loss
-            evaluator.reset()
             argmax = output.argmax(dim=1)
             evaluator.addBatch(argmax, proj_labels)
             accuracy = evaluator.getacc()
@@ -367,14 +366,34 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             losses_seg.update(loss_seg.item(), in_vol.size(0))
             losses_tran.update(loss_tran.item(), in_vol.size(0))
             losses_rot.update(loss_rot.item(), in_vol.size(0))
-            acc.update(accuracy.item(), in_vol.size(0))
-            iou.update(jaccard.item(), in_vol.size(0))
-            iou_moving.update(class_jaccard[-1].item(), in_vol.size(0))
-
+            
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
             
+        accuracy = evaluator.getacc()
+        jaccard, class_jaccard = evaluator.getIoU()
+        acc.update(accuracy.item(), in_vol.size(0))
+        iou.update(jaccard.item(), in_vol.size(0))
+        iou_moving.update(class_jaccard[-1].item(), in_vol.size(0))
+        
+    print('Validation set:\n'
+                'Time avg per batch {batch_time.avg:.3f}\n'
+                'Loss avg {loss.avg:.4f}\n'
+                'Acc avg {acc.avg:.3f}\n'
+                'mIoU avg {iou.avg:.3f}'
+                'Iou moving avg {iou_moving.avg:.3f}\n'
+                .format(batch_time =batch_time,
+                                    loss=losses,
+                                    acc=acc,
+                                    iou=iou,
+                                    iou_moving=iou_moving
+                                    ))    
+    # print also classwise
+    for i, jacc in enumerate(class_jaccard):
+        print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+            i=i, class_str=class_func(i), jacc=jacc))
+       
     # tensorboard logger
     logger.add_scalar('valid_loss_sum', losses.avg, epoch)
     logger.add_scalar('valid_loss_seg', losses_seg.avg, epoch)
@@ -384,18 +403,6 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
     logger.add_scalar('valid_iou', iou.avg, epoch)
     logger.add_scalar('valid_iou_moving', iou_moving.avg, epoch)
     
-    print('Validation set:\n'
-                'Time avg per batch {batch_time.avg:.3f}\n'
-                'Loss avg {loss.avg:.4f}\n'
-                'Acc avg {acc.avg:.3f}\n'
-                'mIoU avg {iou.avg:.3f}'
-                'Iou_moving avg {iou_moving.avg:.3f}\n'
-                .format(batch_time =batch_time,
-                                    loss=losses,
-                                    acc=acc,
-                                    iou=iou,
-                                    iou_moving=iou_moving
-                                    ))
     return iou.avg
     
 

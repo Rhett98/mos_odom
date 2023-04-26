@@ -24,6 +24,7 @@ train:
   # network define
   salsanext_path: 'pretrained/SalsaNextEncoder'
   freeze_sematic: False
+  motion_backbone: 'resnet3d' # 'resnet3d' , 'resnet2p1d', 'se-resnet3d
   residual: False # This needs to be the same as in the dataset params below!
   n_input_scans: 3 # This needs to be the same as in the dataset params below!
 

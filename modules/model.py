@@ -9,7 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from modules.SalsaNext import SalsaNextEncoder
-from modules.resnet3d import ResNet3D, BasicBlock
+from modules.resnet3d import ResNet3D, BasicBlock, SEBasicBlock
+from modules.resnet2p1d import ResNet2P1D, BasicBlock2p1d
 from modules.BaseBlocks import ResBlockDP, UpBlockDP
 from modules.losses import Lovasz_softmax, UncertaintyLoss
 
@@ -55,28 +56,34 @@ class SematicNet(nn.Module):
 
 
 class MotionNet(nn.Module):
-    def __init__(self, input_scan=3):
+    def __init__(self, input_scan=3, motion_backbone = 'resnet3d'):
         """
-        xxx
+        Ues 3DCNN to ectract feature from tensor[bsize,n_scans,c,h,w]
         """
         super(MotionNet, self).__init__()
-
-        # ResNet3D
-        self.resnet = ResNet3D(BasicBlock, [1, 1, 1, 1],[64, 128, 256, 512],input_scan)
+        
+        if motion_backbone == 'resnet3d':
+            self.backbone = ResNet3D(BasicBlock, [1, 1, 1, 1],[32, 64, 128, 256],input_scan)
+        elif motion_backbone == 'resnet2p1d':
+            self.backbone = ResNet2P1D(BasicBlock2p1d, [1, 1, 1, 1],[32, 64, 128, 256],input_scan)
+        elif motion_backbone == 'se-resnet3d':
+            self.backbone = ResNet2P1D(SEBasicBlock, [1, 1, 1, 1],[32, 64, 128, 256],input_scan)
+        else:
+            raise Exception("Not define motion backbone correctly!")
 
         # FC layer to odom output
         rot_out_features = 4
         self.fully_connected_translation = torch.nn.Sequential(
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=400, out_features=100),
+            torch.nn.Linear(in_features=300, out_features=100),
             torch.nn.ReLU(),
             torch.nn.Linear(in_features=100, out_features=3))
         self.fully_connected_rotation = torch.nn.Sequential(
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=400, out_features=100),
+            torch.nn.Linear(in_features=300, out_features=100),
             torch.nn.ReLU(),
             torch.nn.Linear(in_features=100, out_features=rot_out_features))
-        # print(sum(p.numel() for p in self.resnet.parameters())/1000000.0)
+        # print(sum(p.numel() for p in self.backbone.parameters())/1000000.0)
         # print(sum(p.numel() for p in self.fully_connected_translation.parameters())/1000000.0)
         # print(sum(p.numel() for p in self.fully_connected_rotation.parameters())/1000000.0)
         
@@ -87,26 +94,26 @@ class MotionNet(nn.Module):
 
         Returns:
             feature_list:
-               [[bsize, 64, 5, 16, 512],
-                [bsize, 128, 3, 8, 256],
-                [bsize, 256, 2, 4, 128],
-                [bsize, 512, 1, 2, 64],
-                [bsize, 512],
-                [bsize, 400]]
+               [[bsize, 32, 3, 16, 512],
+                [bsize, 64, 2, 8, 256],
+                [bsize, 128, 1, 4, 128],
+                [bsize, 256, 1, 2, 64],
+                [bsize, 256],
+                [bsize, 300]]
             pose: [x,y,z,q0,q1,q2,q3]
         """
-        feature_list = self.resnet(x)
+        feature_list = self.backbone(x)
         feature = feature_list[-1]
         rotation = self.fully_connected_rotation(feature)
         translation = self.fully_connected_translation(feature)
         rotation = rotation / torch.norm(rotation)
         return feature_list , translation, rotation
-        # return translation
 
 
 class MosNet(nn.Module):
-    def __init__(self, nclasses=3, pretrain=None, weight_loss=None, freeze_sematic=True):
+    def __init__(self, pretrain=None, weight_loss=None, freeze_sematic=True, motion_backbone = 'resnet3d'):
         super(MosNet,self).__init__()
+        self.nclasses = 3
         # define loss function
         self.nll_loss = nn.NLLLoss(weight=weight_loss)
         self.l1_loss = nn.L1Loss(reduction='mean')
@@ -115,11 +122,11 @@ class MosNet(nn.Module):
         
         # define layer
         self.sematic = SematicNet(pretrain,freeze_base=freeze_sematic)
-        self.motion = MotionNet()
+        self.motion = MotionNet(motion_backbone = motion_backbone)
         
-        self.fusion_layer1 = ResBlockDP(320, 128, 0.2, pooling=False)
-        self.fusion_layer2 = ResBlockDP(512, 256, 0.2, pooling=False)
-        self.fusion_layer3 = ResBlockDP(512, 256, 0.2, pooling=False)
+        self.fusion_layer1 = ResBlockDP(224, 128, 0.2, pooling=False)
+        self.fusion_layer2 = ResBlockDP(384, 256, 0.2, pooling=False)
+        self.fusion_layer3 = ResBlockDP(384, 256, 0.2, pooling=False)
         
         self.resBlock1 = ResBlockDP(128, 256, 0.2, pooling=True, drop_out=False)
         self.resBlock2 = ResBlockDP(256, 256, 0.2, pooling=True)
@@ -130,7 +137,7 @@ class MosNet(nn.Module):
         self.upBlock3 = UpBlockDP(128, 64, 0.2)
         self.upBlock4 = UpBlockDP(64, 32, 0.2, drop_out=False)
         
-        self.logits = nn.Conv2d(32, nclasses, kernel_size=(1, 1))
+        self.logits = nn.Conv2d(32, self.nclasses, kernel_size=(1, 1))
         # print('******')
         # print(sum(p.numel() for p in self.sematic.parameters())/1000000.0)
         # print(sum(p.numel() for p in self.motion.parameters())/ 1000000.0)
@@ -151,20 +158,20 @@ class MosNet(nn.Module):
         ###### fuse 2 specific branches ######
         # resdual from sematic-net
         down0b, down1b = x[0], x[1]
-        # s-layer1:[bsize, 128, 16, 512] + m-layer0:[bsize, 64, 3, 16, 512]
+        # s-layer1:[bsize, 128, 16, 512] + m-layer0:[bsize, 32, 3, 16, 512]
         s1 = x[2]
         m1 = y[0].view(y[0].shape[0], y[0].shape[1]*y[0].shape[2], y[0].shape[3], y[0].shape[4])
-        # [1, 320, 16, 512] -> [1, 32, 16, 512]
+        # [1, 224, 16, 512] -> [1, 32, 16, 512]
         fu1 = self.fusion_layer1(torch.cat([s1, m1],dim=1))   
-        # s-layer2:[bsize, 256, 8, 256] + m-layer1:[bsize, 128, 3, 8, 256]
+        # s-layer2:[bsize, 256, 8, 256] + m-layer1:[bsize, 64, 2, 8, 256]
         s2 = x[3]
         m2 = y[1].view(y[1].shape[0], y[1].shape[1]*y[1].shape[2], y[1].shape[3], y[1].shape[4])
-        # [1, 512, 8, 256] -> [1, 64, 8, 256]
+        # [1, 384, 8, 256] -> [1, 64, 8, 256]
         fu2 = self.fusion_layer2(torch.cat([s2, m2],dim=1))
-        # s-layer4:[bsize, 256, 4, 128] + m-layer2:[bsize, 256, 2, 4, 128]
+        # s-layer4:[bsize, 256, 4, 128] + m-layer2:[bsize, 128, 1, 4, 128]
         s3 = x[4]
         m3 = y[2].view(y[2].shape[0], y[2].shape[1]*y[2].shape[2], y[2].shape[3], y[2].shape[4])
-        # [1, 512, 4, 128] -> [1, 128, 4, 128]
+        # [1, 384, 4, 128] -> [1, 128, 4, 128]
         fu3 = self.fusion_layer3(torch.cat([s3, m3],dim=1))
         
         ##### fusion-net ######
@@ -189,23 +196,23 @@ class MosNet(nn.Module):
         loss_tran = self.l1_loss(tran_labels, translation)
         loss_rot =  self.l1_loss(rot_labels, rotation/torch.norm(rotation))
         loss_sum = self.uncertainty_loss(loss_seg, loss_tran, loss_rot)
+        
         # write loss to a dict
         loss['seg'] = loss_seg
         loss['tran'] = loss_tran
         loss['rot'] = loss_rot
         loss['sum'] = loss_sum
         return loss, logits, translation, rotation
-        # return logits
 
 if __name__ == '__main__':
     from thop import profile
-    # model1 = MosNet(3,'pretrained/SalsaNextEncoder')
-    # dummy_input1 = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
-    model2 = SematicNet('pretrained/SalsaNextEncoder',1)
-    dummy_input2 = torch.randn(1, 3, 5, 64, 2048)
-    # model3 = MotionNet(3)
+    model = MosNet('pretrained/SalsaNextEncoder')
+    dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.zeros(1, 64, 2048),torch.randn(1,3),torch.randn(1,4)
+    # model2 = SematicNet('pretrained/SalsaNextEncoder',1)
+    # dummy_input2 = torch.randn(1, 3, 5, 64, 2048)
+    # model3 = MotionNet()
     # dummy_input3 = torch.randn(1, 3, 5, 64, 2048)
-    flops, params = profile(model2, (dummy_input2,))
+    flops, params = profile(model, (dummy_input))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
     # with SummaryWriter(comment='MosNet') as w1:
     #     w1.add_graph(model1, (dummy_input1))

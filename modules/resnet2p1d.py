@@ -36,7 +36,7 @@ def conv1x1x1(in_planes, out_planes, stride=1):
                      bias=False)
 
 
-class BasicBlock(nn.Module):
+class BasicBlock2p1d(nn.Module):
     expansion = 1
 
     def __init__(self, in_planes, planes, stride=1, downsample=None):
@@ -136,7 +136,7 @@ class Bottleneck(nn.Module):
         return out
 
 
-class ResNet3D(nn.Module):
+class ResNet2P1D(nn.Module):
 
     def __init__(self,
                  block,
@@ -252,36 +252,36 @@ class ResNet3D(nn.Module):
         if not self.no_max_pool:
             x = self.maxpool(x)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        x1 = self.layer1(x)
+        x2 = self.layer2(x1)
+        x3 = self.layer3(x2)
+        x4 = self.layer4(x3)
 
-        x = self.avgpool(x)
+        x5 = self.avgpool(x4)
 
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        x5 = x5.view(x5.size(0), -1)
+        x6 = self.fc(x5)
 
-        return x
+        return [x1,x2,x3,x4,x5,x6]
 
 
 def generate_model(model_depth, **kwargs):
     assert model_depth in [10, 18, 34, 50, 101, 152, 200]
 
     if model_depth == 10:
-        model = ResNet3D(BasicBlock, [1, 1, 1, 1], get_inplanes(), **kwargs)
+        model = ResNet2P1D(BasicBlock2p1d, [1, 1, 1, 1], get_inplanes(), **kwargs)
     elif model_depth == 18:
-        model = ResNet3D(BasicBlock, [2, 2, 2, 2], get_inplanes(), **kwargs)
+        model = ResNet2P1D(BasicBlock2p1d, [2, 2, 2, 2], get_inplanes(), **kwargs)
     elif model_depth == 34:
-        model = ResNet3D(BasicBlock, [3, 4, 6, 3], get_inplanes(), **kwargs)
+        model = ResNet2P1D(BasicBlock2p1d, [3, 4, 6, 3], get_inplanes(), **kwargs)
     elif model_depth == 50:
-        model = ResNet3D(Bottleneck, [3, 4, 6, 3], get_inplanes(), **kwargs)
+        model = ResNet2P1D(Bottleneck, [3, 4, 6, 3], get_inplanes(), **kwargs)
     elif model_depth == 101:
-        model = ResNet3D(Bottleneck, [3, 4, 23, 3], get_inplanes(), **kwargs)
+        model = ResNet2P1D(Bottleneck, [3, 4, 23, 3], get_inplanes(), **kwargs)
     elif model_depth == 152:
-        model = ResNet3D(Bottleneck, [3, 8, 36, 3], get_inplanes(), **kwargs)
+        model = ResNet2P1D(Bottleneck, [3, 8, 36, 3], get_inplanes(), **kwargs)
     elif model_depth == 200:
-        model = ResNet3D(Bottleneck, [3, 24, 36, 3], get_inplanes(), **kwargs)
+        model = ResNet2P1D(Bottleneck, [3, 24, 36, 3], get_inplanes(), **kwargs)
 
     return model
 

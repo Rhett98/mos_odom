@@ -26,6 +26,55 @@ def conv1x1x1(in_planes, out_planes, stride=1):
                      stride=stride,
                      bias=False)
 
+class SELayer(nn.Module):
+    def __init__(self, channel, reduction=16):
+        super(SELayer, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool3d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ ,_ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1, 1)
+        return x * y.expand_as(x)
+
+class SEBasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1, downsample=None, reduction=16):
+        super(SEBasicBlock, self).__init__()
+        self.conv1 = conv3x3x3(in_planes, planes, stride)
+        self.bn1 = nn.BatchNorm3d(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = conv3x3x3(planes, planes)
+        self.bn2 = nn.BatchNorm3d(planes)
+        self.se = SELayer(planes, reduction)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        residual = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.se(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -111,7 +160,7 @@ class ResNet3D(nn.Module):
                  no_max_pool=False,
                  shortcut_type='B',
                  widen_factor=1.0,
-                 n_classes=400):
+                 n_classes=300):
         super().__init__()
 
         block_inplanes = [int(x * widen_factor) for x in block_inplanes]
@@ -234,8 +283,9 @@ def generate_model(model_depth, **kwargs):
 
 if __name__ == '__main__':
     from thop import profile
-    model = ResNet3D(BasicBlock, [1, 1, 1, 1], [64, 128, 256, 512], 3)
-    dummy_input = torch.randn(1, 3, 10, 64, 2048)
+    # model = ResNet3D(SEBasicBlock, [1, 1, 1, 1], [32, 64, 128, 256], 3)
+    model = ResNet3D(BasicBlock, [1, 1, 1, 1], [32, 64, 128, 256], 3)
+    dummy_input = torch.randn(1, 3, 5, 64, 2048)
     flops, params = profile(model, (dummy_input,))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
     out = model(dummy_input)
