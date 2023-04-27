@@ -154,8 +154,8 @@ def main_worker(args):
     # create model
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
-        model = MosNet(ARCH["train"]["n_input_scans"],ARCH["train"]["salsanext_path"],
-                       weight_loss=loss_w.double(), freeze_sematic=ARCH["train"]["freeze_sematic"],
+        model = MosNet(ARCH["train"]["salsanext_path"],weight_loss=loss_w.double(), 
+                       freeze_sematic=ARCH["train"]["freeze_sematic"],
                        motion_backbone=ARCH["train"]["motion_backbone"])
     if torch.cuda.is_available():
         model.cuda()
