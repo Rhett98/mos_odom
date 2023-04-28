@@ -308,8 +308,9 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
         if i % 40 == 0:
             progress.display(i)
             print('train time left: ',calculate_estimate(max_epoch,epoch,i,len(train_loader),data_time.avg, batch_time.avg))
-        # step scheduler
-        scheduler.step()
+            
+    # step scheduler
+    scheduler.step()
             
     # tensorboard logger
     logger.add_scalar('train_loss_sum', losses.avg, epoch)
