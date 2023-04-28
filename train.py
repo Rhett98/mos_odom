@@ -154,7 +154,7 @@ def main_worker(args):
     # create model
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
-        model = MosNet(ARCH["train"]["salsanext_path"],weight_loss=loss_w.double(), 
+        model = MosNet(ARCH["train"]["salsanext_path"],weight_loss=loss_w, 
                        freeze_sematic=ARCH["train"]["freeze_sematic"],
                        motion_backbone=ARCH["train"]["motion_backbone"])
     if torch.cuda.is_available():
@@ -255,6 +255,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
     losses_rot = AverageMeter('Loss_rot', ':.4f')
     iou = AverageMeter('Iou', ':.4f')
     acc = AverageMeter('Acc', ':.4f')
+    iou_moving = AverageMeter('Iou_moving', ':.4f')
     progress = ProgressMeter(
         len(train_loader),
         [batch_time, losses, iou],
@@ -298,12 +299,13 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
         losses_rot.update(loss_rot.item(), in_vol.size(0))
         acc.update(accuracy.item(), in_vol.size(0))
         iou.update(jaccard.item(), in_vol.size(0))
+        iou_moving.update(class_jaccard[-1].item(), in_vol.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % 20 == 0:
+        if i % 40 == 0:
             progress.display(i)
             print('train time left: ',calculate_estimate(max_epoch,epoch,i,len(train_loader),data_time.avg, batch_time.avg))
         # step scheduler
@@ -381,7 +383,7 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
                 'Time avg per batch {batch_time.avg:.3f}\n'
                 'Loss avg {loss.avg:.4f}\n'
                 'Acc avg {acc.avg:.3f}\n'
-                'mIoU avg {iou.avg:.3f}'
+                'mIoU avg {iou.avg:.3f}\n'
                 'Iou moving avg {iou_moving.avg:.3f}\n'
                 .format(batch_time =batch_time,
                                     loss=losses,
