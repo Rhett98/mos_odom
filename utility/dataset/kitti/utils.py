@@ -8,7 +8,28 @@ import math
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+from utility.geometry import get_transformation_matrix_quaternion
+
 np.random.seed(0)
+
+def write_poses(pose_path, tran, rot):
+    """ write poses  to file.
+        Args:
+            pose_path: target pose filename
+    """
+    # Read and parse the poses
+    transfromation = get_transformation_matrix_quaternion(tran, rot)
+    tran3x4 = np.array(transfromation[:,:3,:]).reshape(12)
+    message = ' '.join(str(i) for i in tran3x4)
+    print(message)
+    try:
+        if '.txt' in pose_path:
+            with open(pose_path, 'a') as f:
+                f.write(message+"\n")
+        else:
+            print('pose_path is wrong.')
+    except FileNotFoundError:
+        print('Ground truth poses are not avaialble.')
 
 
 def load_poses(pose_path):

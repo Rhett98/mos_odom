@@ -659,11 +659,9 @@ class Parser():
 if __name__ == '__main__':
     import yaml
     from tqdm import tqdm
-    ARCH = yaml.safe_load(open('config/simsiam.yml', 'r'))
-    DATA = yaml.safe_load(open('config/labels/local-test.yaml', 'r'))
+    ARCH = yaml.safe_load(open('config/arch/mos.yml', 'r'))
+    DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
     data = '../dataset'
-    # DATA = yaml.safe_load(open('config/labels/kitti-toy.yaml', 'r'))
-    # data = '/home/robot/Repository/data_odometry_velodyne/dataset'
     train_dataset = Parser(root=data,
                             train_sequences=DATA["split"]["train"],
                             valid_sequences=DATA["split"]["valid"],
@@ -682,5 +680,5 @@ if __name__ == '__main__':
     loader = train_dataset.get_train_set()
     assert len(loader) > 0
     for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints) in enumerate(loader):
-        print(proj_in.shape, proj_mask.shape, proj_labels.shape, path_seq, path_name ,proj_range.shape, unproj_range.shape)
+        print(proj_in.shape, proj_mask.shape, proj_labels.shape, path_seq, path_name ,proj_range.shape, unproj_range.shape, p_x.shape)
         
