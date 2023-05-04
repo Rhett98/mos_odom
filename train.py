@@ -314,6 +314,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
     logger.add_scalar('train_loss_rot', losses_rot.avg, epoch)
     logger.add_scalar('train_acc', acc.avg, epoch)
     logger.add_scalar('train_iou', iou.avg, epoch)
+    logger.add_scalar('train_iou_moving', iou_moving.avg, epoch)
     
     return iou.avg
 
