@@ -2,17 +2,12 @@
 # This file is covered by the LICENSE file in the root of this project.
 
 import argparse
-import math
 import os
-import random
-import shutil
 import time
 import yaml
 import datetime
 
 import torch
-import torch.nn as nn
-import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
@@ -270,8 +265,8 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
         data_time.update(time.time() - end)
         in_vol = in_vol.cuda()
         proj_labels = proj_labels.cuda()
-        tran_labels = tran_list[-1].cuda()
-        rot_labels = rot_list[-1].cuda()
+        tran_labels = tran_list[-2].cuda()
+        rot_labels = rot_list[-2].cuda()
         
         # compute output and loss
         loss, output, tran, rot = model(in_vol, proj_labels, tran_labels, rot_labels)
