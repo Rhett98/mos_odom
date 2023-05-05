@@ -8,6 +8,7 @@ import yaml
 import datetime
 
 import torch
+import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
@@ -15,7 +16,7 @@ from tensorboardX import SummaryWriter as Logger
 
 from utility.dataset.kitti.parser_multiscan import Parser
 from utility.ioueval import iouEval
-from modules.model import MosNet
+from modules.model import MotionNet
 from utility.warmupLR import *
 
 
@@ -149,8 +150,7 @@ def main_worker(args):
     # create model
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
-        model = MosNet(ARCH["train"]["salsanext_path"],weight_loss=loss_w, 
-                       freeze_sematic=ARCH["train"]["freeze_sematic"],
+        model = MotionNet(input_scan=ARCH["train"]["n_input_scans"],
                        motion_backbone=ARCH["train"]["motion_backbone"])
     if torch.cuda.is_available():
         model.cuda()
@@ -181,7 +181,7 @@ def main_worker(args):
     
     # optionally resume from a checkpoint
     if args.pretrained is not None:
-        model_path = args.pretrained + "/Mos_odom.pth.tar"
+        model_path = args.pretrained + "/Motion.pth.tar"
         if os.path.isfile(model_path):
             print("=> loading checkpoint '{}'".format(model_path))
             checkpoint = torch.load(model_path)
@@ -211,7 +211,7 @@ def main_worker(args):
             best_train_iou = train_iou
             save_checkpoint({
                 'epoch': epoch + 1,
-                'arch': 'mos',
+                'arch': 'motion',
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
                 'scheduler': scheduler.state_dict()
@@ -219,7 +219,7 @@ def main_worker(args):
         else:
             save_checkpoint({
                 'epoch': epoch + 1,
-                'arch': 'mos',
+                'arch': 'motion',
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
                 'scheduler': scheduler.state_dict()
@@ -233,7 +233,7 @@ def main_worker(args):
                 best_valid_iou = valid_iou
                 save_checkpoint({
                     'epoch': epoch + 1,
-                    'arch': 'mos',
+                    'arch': 'motion',
                     'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict(),
                     'scheduler': scheduler.state_dict()
@@ -245,15 +245,11 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
-    losses_seg = AverageMeter('Loss_seg', ':.4f')
     losses_tran = AverageMeter('Loss_tran', ':.4f')
     losses_rot = AverageMeter('Loss_rot', ':.4f')
-    iou = AverageMeter('Iou', ':.4f')
-    acc = AverageMeter('Acc', ':.4f')
-    iou_moving = AverageMeter('Iou_moving', ':.4f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, losses, iou],
+        [batch_time, losses],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -264,37 +260,23 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
         # measure data loading time
         data_time.update(time.time() - end)
         in_vol = in_vol.cuda()
-        proj_labels = proj_labels.cuda()
         tran_labels = tran_list[-1].cuda()
         rot_labels = rot_list[-1].cuda()
         
         # compute output and loss
-        loss, output, tran, rot = model(in_vol, proj_labels, tran_labels, rot_labels)
-        
-        loss_sum = loss['sum']
-        loss_seg = loss['seg']
-        loss_tran = loss['tran']
-        loss_rot = loss['rot']
-        
+        _, tran, rot = model(in_vol)
+        l1_loss = nn.L1Loss(reduction='mean')
+        loss_tran = l1_loss(tran_labels, tran)
+        loss_rot =  l1_loss(rot_labels, rot/torch.norm(rot))
+        loss = loss_tran + loss_rot
         # compute gradient and do SGD step
         optimizer.zero_grad()
-        loss_sum.backward()
+        loss.backward()
         optimizer.step()
         
-        with torch.no_grad():
-            evaluator.reset()
-            argmax = output.argmax(dim=1)
-            evaluator.addBatch(argmax, proj_labels)
-            accuracy = evaluator.getacc()
-            jaccard, class_jaccard = evaluator.getIoU()
-            
-        losses.update(loss_sum.item(), in_vol.size(0))
-        losses_seg.update(loss_seg.item(), in_vol.size(0))
+        losses.update(loss.item(), in_vol.size(0))
         losses_tran.update(loss_tran.item(), in_vol.size(0))
         losses_rot.update(loss_rot.item(), in_vol.size(0))
-        acc.update(accuracy.item(), in_vol.size(0))
-        iou.update(jaccard.item(), in_vol.size(0))
-        iou_moving.update(class_jaccard[-1].item(), in_vol.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -309,26 +291,18 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
             
     # tensorboard logger
     logger.add_scalar('train_loss_sum', losses.avg, epoch)
-    logger.add_scalar('train_loss_seg', losses_seg.avg, epoch)
     logger.add_scalar('train_loss_tran', losses_tran.avg, epoch)
     logger.add_scalar('train_loss_rot', losses_rot.avg, epoch)
-    logger.add_scalar('train_acc', acc.avg, epoch)
-    logger.add_scalar('train_iou', iou.avg, epoch)
-    logger.add_scalar('train_iou_moving', iou_moving.avg, epoch)
-    
-    return iou.avg
+
+    return loss.avg
 
     
 def validate(val_loader, model, evaluator, class_func, epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
-    losses_seg = AverageMeter('Loss_seg', ':.4f')
     losses_tran = AverageMeter('Loss_tran', ':.4f')
     losses_rot = AverageMeter('Loss_rot', ':.4f')
-    iou = AverageMeter('Iou', ':.4f')
-    iou_moving = AverageMeter('Iou_moving', ':.4f')
-    acc = AverageMeter('Acc', ':.4f')
 
     # switch to evaluate mode
     model.eval()
@@ -343,66 +317,38 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             # measure data loading time
             data_time.update(time.time() - end)
             in_vol = in_vol.cuda()
-            proj_labels = proj_labels.cuda()
             tran_labels = tran_list[-1].cuda()
             rot_labels = rot_list[-1].cuda()
             
             # compute output and loss
-            loss, output, _, _ = model(in_vol, proj_labels, tran_labels, rot_labels)
-            
-            loss_sum = loss['sum']
-            loss_seg = loss['seg']
-            loss_tran = loss['tran']
-            loss_rot = loss['rot']
-            
-            # measure accuracy and record loss
-            argmax = output.argmax(dim=1)
-            evaluator.addBatch(argmax, proj_labels)
-            accuracy = evaluator.getacc()
-            jaccard, class_jaccard = evaluator.getIoU()
+            _, tran, rot = model(in_vol)
+            l1_loss = nn.L1Loss(reduction='mean')
+            loss_tran = l1_loss(tran_labels, tran)
+            loss_rot =  l1_loss(rot_labels, rot/torch.norm(rot))
+            loss = loss_tran + loss_rot
                 
-            losses.update(loss_sum.item(), in_vol.size(0))
-            losses_seg.update(loss_seg.item(), in_vol.size(0))
+            losses.update(loss.item(), in_vol.size(0))
             losses_tran.update(loss_tran.item(), in_vol.size(0))
             losses_rot.update(loss_rot.item(), in_vol.size(0))
             
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
-            
-        accuracy = evaluator.getacc()
-        jaccard, class_jaccard = evaluator.getIoU()
-        acc.update(accuracy.item(), in_vol.size(0))
-        iou.update(jaccard.item(), in_vol.size(0))
-        iou_moving.update(class_jaccard[-1].item(), in_vol.size(0))
+
         
     print('Validation set:\n'
                 'Time avg per batch {batch_time.avg:.3f}\n'
                 'Loss avg {loss.avg:.4f}\n'
-                'Acc avg {acc.avg:.3f}\n'
-                'mIoU avg {iou.avg:.3f}\n'
-                'Iou moving avg {iou_moving.avg:.3f}\n'
                 .format(batch_time =batch_time,
                                     loss=losses,
-                                    acc=acc,
-                                    iou=iou,
-                                    iou_moving=iou_moving
                                     ))    
-    # print also classwise
-    for i, jacc in enumerate(class_jaccard):
-        print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
-            i=i, class_str=class_func(i), jacc=jacc))
        
     # tensorboard logger
     logger.add_scalar('valid_loss_sum', losses.avg, epoch)
-    logger.add_scalar('valid_loss_seg', losses_seg.avg, epoch)
     logger.add_scalar('valid_loss_tran', losses_tran.avg, epoch)
     logger.add_scalar('valid_loss_rot', losses_rot.avg, epoch)
-    logger.add_scalar('valid_acc', acc.avg, epoch)
-    logger.add_scalar('valid_iou', iou.avg, epoch)
-    logger.add_scalar('valid_iou_moving', iou_moving.avg, epoch)
     
-    return iou.avg
+    return loss.avg
     
 
 def calculate_estimate(max_epoch, epoch, iter, len_data, data_time_t, batch_time_t):
