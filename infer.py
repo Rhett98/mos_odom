@@ -19,7 +19,8 @@ from utility.KNN import KNN
 from utility.dataset.kitti.parser_multiscan import Parser
 from modules.model_infer import MosNet
 from utility.warmupLR import *
-from utility.dataset.kitti.utils import write_poses
+from utility.geometry import get_transformation_matrix_quaternion
+from utility.dataset.kitti.utils import write_poses, load_calib
 
 def load_model(weight_path, model):
     state_dict = model.state_dict()
@@ -37,7 +38,7 @@ def load_model(weight_path, model):
     return model
 
 class User():
-  def __init__(self, ARCH, DATA, datadir, logdir, modeldir,split):
+  def __init__(self, ARCH, DATA, datadir, logdir, modeldir, split):
     # parameters
     self.ARCH = ARCH
     self.DATA = DATA
@@ -51,7 +52,7 @@ class User():
                     train_sequences=DATA["split"]["train"],
                     valid_sequences=DATA["split"]["valid"],
                     test_sequences=self.DATA["split"]["test"],
-                    split='train',
+                    split=self.split,
                     labels=DATA["labels"],
                     color_map=DATA["color_map"],
                     learning_map=DATA["learning_map"],
@@ -62,25 +63,13 @@ class User():
                     workers=ARCH["train"]["workers"],
                     gt=True,
                     shuffle_train=True)
-    # # weights for loss (and bias)
-    # epsilon_w = ARCH["train"]["epsilon_w"]
-    # content = torch.zeros(self.parser.get_n_classes(), dtype=torch.float)
-    # for cl, freq in DATA["content"].items():
-    #     x_cl = self.parser.to_xentropy(cl)  # map actual class to xentropy class
-    #     content[x_cl] += freq
-    # loss_w = 1 / (content + epsilon_w)  # get weights
-    # for x_cl, w in enumerate(loss_w):  # ignore the ones necessary to ignore
-    #     if DATA["learning_ignore"][x_cl]:
-    #         # don't weigh
-    #         loss_w[x_cl] = 0
-    # print("Loss weights from content: ", loss_w.data)
     
-    # ignore_class = []
-    # for i, w in enumerate(loss_w):
-    #     if w < 1e-10:
-    #         ignore_class.append(i)
-    #         print("Ignoring class ", i, " in IoU evaluation")
-    # concatenate the encoder and the head
+    calib_file = os.path.join(self.datadir, "sequences",
+                            "08",  "calib.txt")
+    T_cam_velo = load_calib(calib_file)
+    self.T_cam_velo = np.asarray(T_cam_velo).reshape((4, 4))
+    self.T_velo_cam = np.linalg.inv(T_cam_velo)
+
     with torch.no_grad():
         self.model = MosNet(
                        freeze_sematic=ARCH["train"]["freeze_sematic"],
@@ -146,7 +135,8 @@ class User():
     # empty the cache to infer in high res
     if self.gpu:
       torch.cuda.empty_cache()
-
+    # initial last_pose matrix
+    last_pose = np.eye(4)
     with torch.no_grad():
       end = time.time()
       for i, (proj_in, proj_mask, _, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,_, _,) in enumerate(loader):
@@ -172,16 +162,14 @@ class User():
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         res = time.time() - end
-        print("Network seq", path_seq, "scan", path_name,
-                "in", res, "sec")
+        print("Network seq", path_seq, "scan", path_name, "in", res, "sec")
         end = time.time()
         cnn.append(res)
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         res = time.time() - end
-        print("Network seq", path_seq, "scan", path_name,
-                "in", res, "sec")
+        print("Network seq", path_seq, "scan", path_name, "in", res, "sec")
         end = time.time()
         cnn.append(res)
 
@@ -200,8 +188,7 @@ class User():
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         res = time.time() - end
-        print("KNN Infered seq", path_seq, "scan", path_name,
-                "in", res, "sec")
+        print("KNN Infered seq", path_seq, "scan", path_name, "in", res, "sec")
         knn.append(res)
         end = time.time()
 
@@ -219,10 +206,13 @@ class User():
         pred_np.tofile(path)
         
         # save pose
-        path_pose = os.path.join(self.logdir, "sequences",
+        relative_matrix = get_transformation_matrix_quaternion(tran, rot)
+        
+        pose_path = os.path.join(self.logdir, "sequences",
                             path_seq, "poses.txt")
-        write_poses(path_pose, tran, rot)
-
+        
+        # write pose and update last_pose
+        last_pose = write_poses(pose_path, np.dot(self.T_cam_velo,np.dot(relative_matrix,self.T_velo_cam)), last_pose)
 
 
 if __name__ == '__main__': 
