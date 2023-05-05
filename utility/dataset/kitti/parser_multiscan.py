@@ -223,7 +223,7 @@ class SemanticKitti(Dataset):
         trans_list = []
         quaternion_list = []
         # index is now looping from first scan in input sequence to current scan
-        for index in range(start_index, start_index + self. n_input_scans):
+        for index in range(start_index, current_index+1):
         # for index in range(start_index, start_index + 1):
             # get item in tensor shape
             scan_file = self.scan_files[seq][index]
@@ -236,9 +236,10 @@ class SemanticKitti(Dataset):
 
             index_pose = self.poses[seq][index]
             # get translation and _quaternion between index_pose and current_pose
-            relative_pose = np.linalg.inv(index_pose).dot(current_pose)
-            trans_list.append(get_translation_from_transformation_matrix(relative_pose))
-            quaternion_list.append(get_quaternion_from_transformation_matrix(relative_pose))
+            if index != current_index:
+                relative_pose = np.linalg.inv(index_pose).dot(current_pose)
+                trans_list.append(get_translation_from_transformation_matrix(relative_pose))
+                quaternion_list.append(get_quaternion_from_transformation_matrix(relative_pose))
             # open a semantic laserscan
             DA = False
             flip_sign = False
