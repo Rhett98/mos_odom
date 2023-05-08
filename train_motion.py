@@ -317,8 +317,8 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             # measure data loading time
             data_time.update(time.time() - end)
             in_vol = in_vol.cuda()
-            tran_labels = tran_list[-1].cuda()
-            rot_labels = rot_list[-1].cuda()
+            tran_labels = tran_list[-1].cuda().float()
+            rot_labels = rot_list[-1].cuda().float()
             
             # compute output and loss
             loss, tran, rot = model(in_vol, tran_labels, rot_labels)
