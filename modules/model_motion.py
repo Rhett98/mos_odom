@@ -20,7 +20,7 @@ class MotionNet(nn.Module):
         Ues 3DCNN to ectract feature from tensor[bsize,n_scans,c,h,w]
         """
         super(MotionNet, self).__init__()
-        self.l2_loss = nn.MSELoss(reduction='mean')
+        self.l2_loss = nn.MSELoss(reduction='mean').float()
         self.uncertainty_loss = UncertaintyLoss(2)
         
         if motion_backbone == 'resnet3d':
@@ -73,6 +73,7 @@ class MotionNet(nn.Module):
         loss_tran = self.l2_loss(tran_labels, translation)
         loss_rot =  self.l2_loss(rot_labels, rotation/torch.norm(rotation))
         loss_sum = self.uncertainty_loss(loss_tran, loss_rot)
+
         loss['tran'] = loss_tran
         loss['rot'] = loss_rot
         loss['sum'] = loss_sum

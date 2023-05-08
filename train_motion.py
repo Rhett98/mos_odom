@@ -260,20 +260,21 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
         # measure data loading time
         data_time.update(time.time() - end)
         in_vol = in_vol.cuda()
-        tran_labels = tran_list[-1].cuda()
-        rot_labels = rot_list[-1].cuda()
+        tran_labels = tran_list[-1].cuda().float()
+        rot_labels = rot_list[-1].cuda().float()
         
         # compute output and loss
-        losssum, tran, rot = model(in_vol, tran_labels, rot_labels)
-        loss = losssum['sum']
-        loss_tran = losssum['tran']
-        loss_rot = losssum['rot']
+        loss, tran, rot = model(in_vol, tran_labels, rot_labels)
+        loss_sum = loss['sum']
+        loss_tran = loss['tran']
+        loss_rot = loss['rot']
+
         # compute gradient and do SGD step
         optimizer.zero_grad()
-        loss.backward()
+        loss_sum.backward()
         optimizer.step()
         
-        losses.update(loss.item(), in_vol.size(0))
+        losses.update(loss_sum.item(), in_vol.size(0))
         losses_tran.update(loss_tran.item(), in_vol.size(0))
         losses_rot.update(loss_rot.item(), in_vol.size(0))
 
@@ -320,13 +321,12 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
             rot_labels = rot_list[-1].cuda()
             
             # compute output and loss
-            _, tran, rot = model(in_vol)
-            l1_loss = nn.L1Loss(reduction='mean')
-            loss_tran = l1_loss(tran_labels, tran)
-            loss_rot =  l1_loss(rot_labels, rot/torch.norm(rot))
-            loss = loss_tran + loss_rot
-                
-            losses.update(loss.item(), in_vol.size(0))
+            loss, tran, rot = model(in_vol, tran_labels, rot_labels)
+            loss_sum = loss['sum']
+            loss_tran = loss['tran']
+            loss_rot = loss['rot']
+            
+            losses.update(loss_sum.item(), in_vol.size(0))
             losses_tran.update(loss_tran.item(), in_vol.size(0))
             losses_rot.update(loss_rot.item(), in_vol.size(0))
             

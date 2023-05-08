@@ -632,7 +632,7 @@ if __name__ == '__main__':
     import yaml
     from utility.geometry import get_transformation_matrix_quaternion
     from utility.dataset.kitti.utils import write_poses, load_calib
-    ARCH = yaml.safe_load(open('config/arch/mos-test.yml', 'r'))
+    ARCH = yaml.safe_load(open('config/arch/mos.yml', 'r'))
     DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
     data = '../dataset'
     # DATA = yaml.safe_load(open('config/labels/kitti-toy.yaml', 'r'))
@@ -662,8 +662,12 @@ if __name__ == '__main__':
     T_velo_cam = np.linalg.inv(T_cam_velo)
     last_pose = np.eye(4)
     for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
-        relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
-        last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
+        # relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
+        # last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
+        print("xxxxxxxxxxxxxxxx")
+        print(trans)
+        print("cccccccccccccc")
+        print(rot)
     # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/08/poses.txt")
     # poses = np.array(load_poses(pose_file))
     # inv_frame0 = np.linalg.inv(poses[0])
