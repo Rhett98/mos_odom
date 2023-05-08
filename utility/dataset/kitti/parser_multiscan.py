@@ -630,13 +630,14 @@ class Parser():
     
 if __name__ == '__main__':
     import yaml
-    from tqdm import tqdm
-    ARCH = yaml.safe_load(open('config/arch/mos.yml', 'r'))
+    from utility.geometry import get_transformation_matrix_quaternion
+    from utility.dataset.kitti.utils import write_poses, load_calib
+    ARCH = yaml.safe_load(open('config/arch/mos-test.yml', 'r'))
     DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
     data = '../dataset'
     # DATA = yaml.safe_load(open('config/labels/kitti-toy.yaml', 'r'))
     # data = '/home/robot/Repository/data_odometry_velodyne/dataset'
-    train_dataset = Parser(root=data,
+    parse = Parser(root=data,
                             train_sequences=DATA["split"]["train"],
                             valid_sequences=DATA["split"]["valid"],
                             test_sequences=None,
@@ -651,12 +652,18 @@ if __name__ == '__main__':
                             workers=ARCH["train"]["workers"],
                             gt=True,
                             shuffle_train=True)
-    loader = train_dataset.get_train_set()
+    loader = parse.get_valid_set()
     assert len(loader) > 0
+    
+    # load calibrations
+    calib_file = os.path.join("/home/yu/Resp/dataset/sequences/08/calib.txt")
+    T_cam_velo = load_calib(calib_file)
+    T_cam_velo = np.asarray(T_cam_velo).reshape((4, 4))
+    T_velo_cam = np.linalg.inv(T_cam_velo)
+    last_pose = np.eye(4)
     for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
-        # print(proj_in.shape, proj_mask.shape, proj_labels.shape, path_seq, path_name ,proj_range.shape, unproj_range.shape)
-        # print(len(re_pose))
-        print(trans)
+        relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
+        last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
     # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/08/poses.txt")
     # poses = np.array(load_poses(pose_file))
     # inv_frame0 = np.linalg.inv(poses[0])
