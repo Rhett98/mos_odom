@@ -16,7 +16,7 @@ from tensorboardX import SummaryWriter as Logger
 
 from utility.dataset.kitti.parser_multiscan import Parser
 from utility.ioueval import iouEval
-from modules.model import MotionNet
+from modules.model_motion import MotionNet
 from utility.warmupLR import *
 
 
@@ -264,11 +264,10 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
         rot_labels = rot_list[-1].cuda()
         
         # compute output and loss
-        _, tran, rot = model(in_vol)
-        l1_loss = nn.L1Loss(reduction='mean')
-        loss_tran = l1_loss(tran_labels, tran)
-        loss_rot =  l1_loss(rot_labels, rot/torch.norm(rot))
-        loss = loss_tran + loss_rot
+        losssum, tran, rot = model(in_vol, tran_labels, rot_labels)
+        loss = losssum['sum']
+        loss_tran = losssum['tran']
+        loss_rot = losssum['rot']
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
@@ -294,7 +293,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
     logger.add_scalar('train_loss_tran', losses_tran.avg, epoch)
     logger.add_scalar('train_loss_rot', losses_rot.avg, epoch)
 
-    return loss.avg
+    return losses.avg
 
     
 def validate(val_loader, model, evaluator, class_func, epoch, logger):
@@ -348,7 +347,7 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
     logger.add_scalar('valid_loss_tran', losses_tran.avg, epoch)
     logger.add_scalar('valid_loss_rot', losses_rot.avg, epoch)
     
-    return loss.avg
+    return losses.avg
     
 
 def calculate_estimate(max_epoch, epoch, iter, len_data, data_time_t, batch_time_t):
