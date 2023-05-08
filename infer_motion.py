@@ -145,9 +145,6 @@ class User():
           proj_in = proj_in.cuda()
           p_x = p_x.cuda()
           p_y = p_y.cuda()
-          if self.post:
-            proj_range = proj_range.cuda()
-            unproj_range = unproj_range.cuda()
 
         #compute output
         _, tran, rot = self.model(proj_in)
