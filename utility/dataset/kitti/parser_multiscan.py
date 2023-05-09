@@ -502,7 +502,7 @@ class Parser():
                                                max_points=max_points,
                                                transform=True,
                                                gt=self.gt,
-                                               drop_few_static_frames=True)
+                                               drop_few_static_frames=False)
 
             self.trainloader = torch.utils.data.DataLoader(self.train_dataset,
                                                            batch_size=self.batch_size,
