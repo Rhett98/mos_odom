@@ -49,6 +49,7 @@ class MotionNet(nn.Module):
         feature_1 = self.backbone(x1)
         feature_2 = self.backbone(x2)
         feature = torch.cat([feature_1, feature_2],dim=1)
+        
         f = self.avgpool(feature)
         f = f.view(f.size(0), -1)
         f = self.fc(f)

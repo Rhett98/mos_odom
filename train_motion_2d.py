@@ -405,6 +405,27 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 if __name__ == '__main__':   
-    main()
+    # main()
+    import yaml
+    from utility.geometry import get_transformation_matrix_quaternion
+    from utility.dataset.kitti.utils import write_poses, load_calib
+    ARCH = yaml.safe_load(open('config/arch/mos.yml', 'r'))
+    DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
+    model = MotionNet()
+    optimizer = torch.optim.Adam([{'params': model.parameters()}],
+                                    lr=ARCH["train"]["lr"],
+                                    weight_decay=ARCH["train"]["w_decay"])
+    steps_per_epoch = 1000
+    up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
+    final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
+    scheduler = warmupLR(optimizer=optimizer,
+                        lr=ARCH["train"]["lr"],
+                        warmup_steps=up_steps,
+                        momentum=ARCH["train"]["momentum"],
+                        decay=final_decay)
+    for i in range(10):
+        optimizer.step()
+        print(optimizer.state_dict()['param_groups'][0]['lr'])
+        
 
     

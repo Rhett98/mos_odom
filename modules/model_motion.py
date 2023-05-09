@@ -23,11 +23,11 @@ class MotionNet(nn.Module):
         self.uncertainty_loss = UncertaintyLoss(2)
         
         if motion_backbone == 'resnet3d':
-            self.backbone = ResNet3D(BasicBlock, [1, 1, 1, 1],[32, 64, 128, 256],input_scan)
+            self.backbone = ResNet3D(BasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
         elif motion_backbone == 'resnet2p1d':
-            self.backbone = ResNet2P1D(BasicBlock2p1d, [1, 1, 1, 1],[32, 64, 128, 256],input_scan)
+            self.backbone = ResNet2P1D(BasicBlock2p1d, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
         elif motion_backbone == 'se-resnet3d':
-            self.backbone = ResNet2P1D(SEBasicBlock, [1, 1, 1, 1],[32, 64, 128, 256],input_scan)
+            self.backbone = ResNet2P1D(SEBasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
         else:
             raise Exception("Not define motion backbone correctly!")
 
