@@ -23,11 +23,11 @@ class MotionNet(nn.Module):
         self.uncertainty_loss = UncertaintyLoss(2)
         
         if motion_backbone == 'resnet3d':
-            self.backbone = ResNet3D(BasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
+            self.backbone = ResNet3D(BasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan, n_classes=800)
         elif motion_backbone == 'resnet2p1d':
-            self.backbone = ResNet2P1D(BasicBlock2p1d, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
+            self.backbone = ResNet2P1D(BasicBlock2p1d, [2, 2, 2, 2],[64, 128, 256, 512],input_scan, n_classes=800)
         elif motion_backbone == 'se-resnet3d':
-            self.backbone = ResNet3D(SEBasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
+            self.backbone = ResNet3D(SEBasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan, n_classes=800)
         else:
             raise Exception("Not define motion backbone correctly!")
 
@@ -35,14 +35,18 @@ class MotionNet(nn.Module):
         rot_out_features = 4
         self.fully_connected_translation = torch.nn.Sequential(
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=300, out_features=100),
+            torch.nn.Linear(in_features=800, out_features=400),
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=100, out_features=3))
+            torch.nn.Linear(in_features=400, out_features=200),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features=200, out_features=3))
         self.fully_connected_rotation = torch.nn.Sequential(
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=300, out_features=100),
+            torch.nn.Linear(in_features=800, out_features=400),
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=100, out_features=rot_out_features))
+            torch.nn.Linear(in_features=400, out_features=200),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features=200, out_features=rot_out_features))
         # print(sum(p.numel() for p in self.backbone.parameters())/1000000.0)
         # print(sum(p.numel() for p in self.fully_connected_translation.parameters())/1000000.0)
         # print(sum(p.numel() for p in self.fully_connected_rotation.parameters())/1000000.0)
