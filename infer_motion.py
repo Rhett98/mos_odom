@@ -17,7 +17,7 @@ import torch.utils.data
 
 from utility.KNN import KNN
 from utility.dataset.kitti.parser_multiscan import Parser
-from modules.model_infer import MotionNet
+from modules.model_motion import MotionNet
 from utility.warmupLR import *
 from utility.geometry import get_transformation_matrix_quaternion
 from utility.dataset.kitti.utils import write_poses, load_calib
@@ -132,22 +132,16 @@ class User():
     last_pose = np.eye(4)
     with torch.no_grad():
       end = time.time()
-      for i, (proj_in, proj_mask, _, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,_, _,) in tqdm(enumerate(loader)):
+      for i, (proj_in, proj_mask, _, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,tran_list, rot_list) in tqdm(enumerate(loader)):
         # first cut to rela size (batch size one allows it)
-        p_x = p_x[0, :npoints]
-        p_y = p_y[0, :npoints]
-        proj_range = proj_range[0, :npoints]
-        unproj_range = unproj_range[0, :npoints]
+        # first cut to rela size (batch size one allows it)
         path_seq = path_seq[0]
-        path_name = path_name[0]
-        
-        if self.gpu:
-          proj_in = proj_in.cuda()
-          p_x = p_x.cuda()
-          p_y = p_y.cuda()
+        tran_labels = tran_list[-1].cuda().float()
+        rot_labels = rot_list[-1].cuda().float()
+        proj_in = proj_in.cuda()
 
         #compute output
-        _, tran, rot = self.model(proj_in)
+        loss, tran, rot = self.model(proj_in,tran_labels, rot_labels)
         
         # save pose
         relative_matrix = get_transformation_matrix_quaternion(tran, rot)
