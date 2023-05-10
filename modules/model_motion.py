@@ -27,7 +27,7 @@ class MotionNet(nn.Module):
         elif motion_backbone == 'resnet2p1d':
             self.backbone = ResNet2P1D(BasicBlock2p1d, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
         elif motion_backbone == 'se-resnet3d':
-            self.backbone = ResNet2P1D(SEBasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
+            self.backbone = ResNet3D(SEBasicBlock, [2, 2, 2, 2],[64, 128, 256, 512],input_scan)
         else:
             raise Exception("Not define motion backbone correctly!")
 
@@ -66,7 +66,6 @@ class MotionNet(nn.Module):
         feature = feature_list[-1]
         rotation = self.fully_connected_rotation(feature)
         translation = self.fully_connected_translation(feature)
-        rotation = rotation / torch.norm(rotation)
         
         loss = {}
         loss_tran = self.l2_loss(tran_labels, translation)
