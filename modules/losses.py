@@ -25,7 +25,7 @@ try:
     from itertools import ifilterfalse
 except ImportError:
     from itertools import filterfalse as ifilterfalse
-
+import torch.nn.functional as F
 
 def isnan(x):
     return x != x
@@ -159,3 +159,18 @@ class UncertaintyLoss(nn.Module):
             loss += input[i] / (2 * self.sigma[i] ** 2)
         loss += torch.log(self.sigma.pow(2).prod())
         return loss
+
+class HWSLoss(nn.Module):
+    """ Geometric loss function from PoseNet paper """
+    def __init__(self, sx=0.0, sq=-2.5, eps=1e-6):
+        super(HWSLoss, self).__init__()
+        self.sx = nn.Parameter(torch.Tensor([sx]))
+        self.sq = nn.Parameter(torch.Tensor([sq]))
+        self.eps = eps # numerical stability during backprop
+        self.mse = nn.MSELoss() # TODO: try experimenting with L1-norm
+        
+    def forward(self, loss_x, loss_q):        
+        loss = torch.exp(-self.sx)*loss_x + self.sx \
+               + torch.exp(-self.sq)*loss_q + self.sq
+        
+        return loss, loss_x, loss_q

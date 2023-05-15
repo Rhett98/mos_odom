@@ -141,8 +141,7 @@ class SemanticKitti(Dataset):
 
             if self.use_residual:
                 for i in range(self.n_input_scans):
-                    folder_name = "residual_images_" + str(i+1)
-                    exec("residual_path_" + str(i+1) + " = os.path.join(self.root, seq, folder_name)")
+                    exec("residual_path_" + str(i+1) + " = os.path.join(self.root, seq, residual_images_" + str(i+1))
 
             # get files
             scan_files = [os.path.join(dp, f) for dp, dn, fn in os.walk(
@@ -319,17 +318,17 @@ class SemanticKitti(Dataset):
             if self.use_residual:
                 for i in range(self.n_input_scans):
                     exec("proj_residuals_" + str(i+1) + " = torch.Tensor(np.load(residual_file_" + str(i+1) + "))")
-
+            
             proj = torch.cat([proj_range.unsqueeze(0).clone(),      # torch.Size([1, 64, 2048])
-                              proj_xyz.clone().permute(2, 0, 1),    # torch.Size([3, 64, 2048])
-                               proj_remission.unsqueeze(0).clone()]) # torch.Size([1, 64, 2048])
+                            proj_xyz.clone().permute(2, 0, 1),    # torch.Size([3, 64, 2048])
+                            proj_remission.unsqueeze(0).clone(),]) # torch.Size([1, 64, 2048])
             proj = (proj - self.sensor_img_means[:, None, None]) / self.sensor_img_stds[:, None, None]
+            
+            if self.use_normal:
+                proj_normal = torch.from_numpy(scan.normal_map).clone().permute(2, 0, 1)
+                proj = torch.cat([proj, proj_normal,]) 
 
             proj_full = torch.cat([proj_full, proj.view(1,proj.shape[0],proj.shape[1],proj.shape[2])])
-
-        if self.use_normal:
-            proj_full = torch.cat([proj_full, torch.from_numpy(scan.normal_map).clone().permute(2, 0, 1)]) # 5 + 3 = 8 channel
-            # proj_full = torch.cat([proj_full, proj_xyz.clone().permute(2, 0, 1)]) # 5 + 3 = 8 channel
 
         # add residual channel
         if self.use_residual:
@@ -632,7 +631,7 @@ if __name__ == '__main__':
     import yaml
     from utility.geometry import get_transformation_matrix_quaternion
     from utility.dataset.kitti.utils import write_poses, load_calib
-    ARCH = yaml.safe_load(open('config/arch/mos.yml', 'r'))
+    ARCH = yaml.safe_load(open('config/arch/mos-motion.yml', 'r'))
     DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
     data = '../dataset'
     # DATA = yaml.safe_load(open('config/labels/kitti-toy.yaml', 'r'))
@@ -652,8 +651,8 @@ if __name__ == '__main__':
                             workers=ARCH["train"]["workers"],
                             gt=True,
                             shuffle_train=True)
-    loader = parse.get_valid_set()
-    assert len(loader) > 0
+    # loader = parse.get_train_set()
+    # assert len(loader) > 0
     
     # load calibrations
     calib_file = os.path.join("/home/yu/Resp/dataset/sequences/08/calib.txt")
@@ -661,14 +660,18 @@ if __name__ == '__main__':
     T_cam_velo = np.asarray(T_cam_velo).reshape((4, 4))
     T_velo_cam = np.linalg.inv(T_cam_velo)
     last_pose = np.eye(4)
-    for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
-        # relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
-        # last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
-        print("xxxxxxxxxxxxxxxx")
-        # print(trans)
+    loader = parse.train_dataset
+    for i in range(5,10):
+        proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot = loader.__getitem__(i)
         print(proj_in.shape)
-        print(proj_in[:,-1].shape)
-        print("cccccccccccccc")
+        print(trans,rot)
+    # for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
+    #     # relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
+    #     # last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
+    #     print("xxxxxxxxxxxxxxxx")
+    #     print(proj_in.shape)
+    #     print("cccccccccccccc")
+        # print(proj_in[-1,-1,0])
         # print(rot)
     # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/08/poses.txt")
     # poses = np.array(load_poses(pose_file))

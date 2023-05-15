@@ -105,8 +105,9 @@ class MotionNet(nn.Module):
         feature_list = self.backbone(x)
         feature = feature_list[-1]
         rotation = self.fully_connected_rotation(feature)
+        rotation = rotation/torch.norm(rotation)
         translation = self.fully_connected_translation(feature)
-        rotation = rotation / torch.norm(rotation)
+        
         return feature_list , translation, rotation
 
 
@@ -194,7 +195,7 @@ class MosNet(nn.Module):
         loss = {}       
         loss_seg = self.nll_loss(torch.log(logits.clamp(min=1e-8)), seg_labels.long()) + self.Ls(logits, seg_labels.long())
         loss_tran = self.l1_loss(tran_labels, translation)
-        loss_rot =  self.l1_loss(rot_labels, rotation/torch.norm(rotation))
+        loss_rot =  self.l1_loss(rot_labels, rotation)
         loss_sum = self.uncertainty_loss(loss_seg, loss_tran, loss_rot)
         
         # write loss to a dict

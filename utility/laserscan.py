@@ -226,7 +226,9 @@ class LaserScan:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points)
         # Calculate normal, search radius 20cm, only consider 15 points in the neighborhood
-        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=15))
+        # pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=15))
+        o3d.geometry.estimate_normals(pcd,search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=15))
+
         ## Calculate normals, considering only 20 points in the neighborhood
         # pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=10))
         normals = np.asarray(pcd.normals)

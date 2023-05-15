@@ -193,9 +193,6 @@ def main_worker(args):
         else:
             print("=> no checkpoint found in '{}'".format(args.pretrained))
     
-    # set train and valid evaluator
-    evaluator = iouEval(parser.get_n_classes(), device, ignore_class)
-    
     cudnn.benchmark = True
     
     # save train info
@@ -203,7 +200,7 @@ def main_worker(args):
     best_valid_iou = 0
     for epoch in range(start_epoch, max_epoch):
         # train for one epoch
-        train_iou = train_epoch(train_loader, model, optimizer, evaluator, scheduler, epoch, max_epoch, tb_logger)
+        train_iou = train_epoch(train_loader, model, optimizer, scheduler, epoch, max_epoch, tb_logger)
         
         # checkpoint save
         if train_iou > best_train_iou:
@@ -227,7 +224,7 @@ def main_worker(args):
         if epoch % ARCH["train"]["report_epoch"] == 0:
             # evaluate on validation set
             print("*" * 70)
-            valid_iou = validate(valid_loader, model, evaluator, parser.get_xentropy_class_string, epoch, tb_logger)
+            valid_iou = validate(valid_loader, model, parser.get_xentropy_class_string, epoch, tb_logger)
             if valid_iou > best_valid_iou:
                 best_valid_iou = valid_iou
                 save_checkpoint({
@@ -240,7 +237,7 @@ def main_worker(args):
     print("*" * 80)
     print('Finished Training')
         
-def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_epoch, logger):
+def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
@@ -255,7 +252,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
     model.train()
 
     end = time.time()
-    for i, (in_vol, _, proj_labels, _, _, _, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in enumerate(train_loader):
+    for i, (in_vol, _, _, _, _, _, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
         in_vol = in_vol.cuda()
@@ -296,7 +293,7 @@ def train_epoch(train_loader, model, optimizer, evaluator, scheduler,epoch, max_
     return losses.avg
 
     
-def validate(val_loader, model, evaluator, class_func, epoch, logger):
+def validate(val_loader, model, class_func, epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
@@ -305,7 +302,6 @@ def validate(val_loader, model, evaluator, class_func, epoch, logger):
 
     # switch to evaluate mode
     model.eval()
-    evaluator.reset()
     # empty the cache to infer in high res
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

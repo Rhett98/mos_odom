@@ -46,4 +46,80 @@ from utility.dataset.kitti.parser_multiscan import Parser
 #         ignore_class.append(i)
 #         print("Ignoring class ", i, " in IoU evaluation")
 import numpy as np
-print(np.eye(4))
+import torch.nn as nn
+import torch.nn.functional as F
+
+from scipy.spatial.transform import Rotation as R
+
+def get_x_q(pose: torch.Tensor):
+    """ Get x, q vectors from pose matrix 
+    Args:
+        pose (Bx4x4 array): relative pose
+    Returns:
+        x (Bx3x1 array): translation 
+        q (Bx4x1 array): quarternion
+    """
+    x = pose[:, :-1, -1]
+    rot = pose[:, :-1, :-1] 
+    r = R.from_matrix(rot.detach().numpy())
+    q = torch.from_numpy(r.as_quat())
+    
+    return x.float(), q.float()
+
+def get_pose(x, q):
+    """ Get 4x4 pose from x and q numpy vectors
+    Args:
+        x (3x1 array): translation 
+        q (4x1 array): quarternion
+    Returns:
+        pose (4x4 array): transformation pose
+    """
+    pose = np.identity(4)
+    r = R.from_quat(q)
+    rot = r.as_matrix()
+    pose[:-1, :-1] = rot
+    pose[:-1, -1] = x
+    
+    return pose
+
+def rotation_error(pose_error):
+    """ Compute rotation error
+    Args:
+        pose_error (4x4 array): relative pose error
+    Returns:
+        rot_error (float): rotation error
+    """
+    a = pose_error[0, 0]
+    b = pose_error[1, 1]
+    c = pose_error[2, 2]
+    d = 0.5*(a+b+c-1.0)
+    rot_error = np.arccos(max(min(d, 1.0), -1.0))
+    return rot_error
+
+def translation_error(pose_error):
+    """ Compute translation error
+    Args:
+        pose_error (4x4 array): relative pose error
+    Returns:
+        trans_error (float): translation error
+    """
+    dx = pose_error[0, 3]
+    dy = pose_error[1, 3]
+    dz = pose_error[2, 3]
+    trans_error = np.sqrt(dx**2+dy**2+dz**2)
+    return trans_error
+
+if __name__ == '__main__':
+    loss = nn.L1Loss()
+    tran = torch.tensor([0.6632,0.0047,0.0086])
+    tran_l = torch.tensor([0.6755,0.0033,0.0138])
+    rot = torch.tensor([ 0.4232, -0.0019,  0.0005,  0.0033])
+    rot_l = torch.tensor([ 1, -2.4459e-04,  7.2978e-04,  1.9661e-03])
+    rot_norm = rot/torch.norm(rot)
+    pose = get_pose(tran, rot)
+    pose_l = get_pose(tran_l, rot_l)
+    print(pose)
+    print(pose_l)
+    err = np.linalg.inv(pose_l) @ pose
+    print("rot err:",rotation_error(err), loss(rot_l, rot))
+    print("tran err:",translation_error(err), loss(tran_l, tran))

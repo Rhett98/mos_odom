@@ -14,11 +14,12 @@ from modules.losses import Lovasz_softmax, UncertaintyLoss
 
 
 class MotionNet(nn.Module):
-    def __init__(self, input_scan=3, motion_backbone = 'resnet3d'):
+    def __init__(self, input_scan=2, motion_backbone = 'resnet3d'):
         """
         Ues 3DCNN to ectract feature from tensor[bsize,n_scans,c,h,w]
         """
         super(MotionNet, self).__init__()
+        self.l1_loss = nn.L1Loss(reduction='mean').float()
         self.l2_loss = nn.MSELoss(reduction='mean').float()
         self.uncertainty_loss = UncertaintyLoss(2)
         
@@ -70,10 +71,11 @@ class MotionNet(nn.Module):
         feature = feature_list[-1]
         rotation = self.fully_connected_rotation(feature)
         translation = self.fully_connected_translation(feature)
+        rotation = rotation/torch.norm(rotation)
         
         loss = {}
-        loss_tran = self.l2_loss(tran_labels, translation)
-        loss_rot =  self.l2_loss(rot_labels, rotation/torch.norm(rotation))
+        loss_tran = self.l1_loss(tran_labels, translation)
+        loss_rot =  self.l2_loss(rot_labels, rotation)
         loss_sum = self.uncertainty_loss(loss_tran, loss_rot)
 
         loss['tran'] = loss_tran
@@ -85,6 +87,6 @@ class MotionNet(nn.Module):
 if __name__ == '__main__':
     from thop import profile
     model = MotionNet()
-    dummy_input = torch.randn(1, 3, 5, 64, 2048),torch.randn(1, 3),torch.randn(1, 4),
+    dummy_input = torch.randn(1, 2, 5, 64, 2048),torch.randn(1, 3),torch.randn(1, 4),
     flops, params = profile(model, (dummy_input))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
