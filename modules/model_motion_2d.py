@@ -18,7 +18,7 @@ class MotionNet(nn.Module):
         Ues 3DCNN to ectract feature from tensor[bsize,c,h,w]
         """
         super(MotionNet, self).__init__()
-        self.l1_loss = nn.MSELoss(reduction='mean').float()
+        self.l1_loss = nn.L1Loss(reduction='mean').float()
         self.l2_loss = nn.MSELoss(reduction='mean').float()
         self.hws_loss = HWSLoss()
         
