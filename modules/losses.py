@@ -173,4 +173,4 @@ class HWSLoss(nn.Module):
         loss = torch.exp(-self.sx)*loss_x + self.sx \
                + torch.exp(-self.sq)*loss_q + self.sq
         
-        return loss, loss_x, loss_q
+        return loss
