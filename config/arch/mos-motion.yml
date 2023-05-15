@@ -26,7 +26,7 @@ train:
   freeze_sematic: False
   motion_backbone: 'se-resnet3d' # 'resnet3d' , 'resnet2p1d', 'se-resnet3d'
   residual: False # This needs to be the same as in the dataset params below!
-  n_input_scans: 3 # This needs to be the same as in the dataset params below!
+  n_input_scans: 2 # This needs to be the same as in the dataset params below!
 
 ################################################################################
 # postproc parameters
@@ -74,7 +74,7 @@ dataset:
       - 0.16
       
     # for mos
-    n_input_scans: 3 # This needs to be the same as in the backbone params above!
+    n_input_scans: 2 # This needs to be the same as in the backbone params above!
     residual: False   # This needs to be the same as in the backbone params above!
     transform: False # tranform the last n_input_scans - 1 frames before concatenation
-    use_normal: False # if use normal vector as channels of range image
+    use_normal: True # if use normal vector as channels of range image
