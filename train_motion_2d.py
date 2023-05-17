@@ -6,7 +6,7 @@ import os
 import time
 import yaml
 import datetime
-
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -15,8 +15,9 @@ import torch.utils.data
 from tensorboardX import SummaryWriter as Logger
 
 from utility.dataset.kitti.parser_multiscan import Parser
-from utility.ioueval import iouEval
 from modules.model_motion_2d import MotionNet
+from modules.lonet import OdomRegNet
+from modules.nets.deeplio import DeepLO
 from utility.warmupLR import *
 
 
@@ -48,6 +49,7 @@ parser.add_argument(
     required=False,
     default=None,
     help='Directory to get the pretrained model. If not passed, do from scratch!')
+
 
 def main():
     FLAGS, unparsed = parser.parse_known_args()
@@ -107,7 +109,6 @@ def main_worker(args):
     start_epoch = 0
     max_epoch = ARCH["train"]["max_epochs"]
     tb_logger = Logger(args.log + "/tb")
-    device = 'cuda'
     
     # Data loading code
     parser = Parser(root=args.dataset,
@@ -126,31 +127,15 @@ def main_worker(args):
                     gt=True,
                     shuffle_train=True)
     train_loader = parser.get_train_set()
-    valid_loader = parser.get_valid_set()
-    
-    # weights for loss (and bias)
-    epsilon_w = ARCH["train"]["epsilon_w"]
-    content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
-    for cl, freq in DATA["content"].items():
-        x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
-        content[x_cl] += freq
-    loss_w = 1 / (content + epsilon_w)  # get weights
-    for x_cl, w in enumerate(loss_w):  # ignore the ones necessary to ignore
-        if DATA["learning_ignore"][x_cl]:
-            # don't weigh
-            loss_w[x_cl] = 0
-    print("Loss weights from content: ", loss_w.data)
-    
-    ignore_class = []
-    for i, w in enumerate(loss_w):
-        if w < 1e-10:
-            ignore_class.append(i)
-            print("Ignoring class ", i, " in IoU evaluation")
     
     # create model
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
-        model = MotionNet()
+        # model = MotionNet()
+        model = DeepLO((3,64,2048))
+        # model = OdomRegNet(5)
+    # model.apply(weights_init)
+    
     if torch.cuda.is_available():
         model.cuda()
         cudnn.benchmark = True
@@ -172,22 +157,23 @@ def main_worker(args):
     steps_per_epoch = parser.get_train_size()
     up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
     final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
-    scheduler = warmupLR(optimizer=optimizer,
-                        lr=ARCH["train"]["lr"],
-                        warmup_steps=up_steps,
-                        momentum=ARCH["train"]["momentum"],
-                        decay=final_decay)
+    # scheduler = warmupLR(optimizer=optimizer,
+    #                     lr=ARCH["train"]["lr"],
+    #                     warmup_steps=up_steps,
+    #                     momentum=ARCH["train"]["momentum"],
+    #                     decay=final_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
     
     # optionally resume from a checkpoint
     if args.pretrained is not None:
-        model_path = args.pretrained + "/Motion.pth.tar"
+        model_path = args.pretrained + "/Mos_odom.pth.tar"
         if os.path.isfile(model_path):
             print("=> loading checkpoint '{}'".format(model_path))
             checkpoint = torch.load(model_path)
             start_epoch = checkpoint['epoch'] + 1
             model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            scheduler.load_state_dict(checkpoint['scheduler'])
+            # optimizer.load_state_dict(checkpoint['optimizer'])
+            # scheduler.load_state_dict(checkpoint['scheduler'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(model_path, checkpoint['epoch']))
         else:
@@ -201,7 +187,6 @@ def main_worker(args):
     for epoch in range(start_epoch, max_epoch):
         # train for one epoch
         train_iou = train_epoch(train_loader, model, optimizer, scheduler, epoch, max_epoch, tb_logger)
-        
         # checkpoint save
         if train_iou > best_train_iou:
             best_train_iou = train_iou
@@ -209,31 +194,26 @@ def main_worker(args):
                 'epoch': epoch + 1,
                 'arch': 'motion',
                 'state_dict': model.state_dict(),
-                'optimizer' : optimizer.state_dict(),
-                'scheduler': scheduler.state_dict()
             }, args.log, suffix='_train_best')
         else:
             save_checkpoint({
                 'epoch': epoch + 1,
                 'arch': 'motion',
                 'state_dict': model.state_dict(),
-                'optimizer' : optimizer.state_dict(),
-                'scheduler': scheduler.state_dict()
             }, args.log, suffix='')
             
-        if epoch % ARCH["train"]["report_epoch"] == 0:
-            # evaluate on validation set
-            print("*" * 70)
-            valid_iou = validate(valid_loader, model, parser.get_xentropy_class_string, epoch, tb_logger)
-            if valid_iou > best_valid_iou:
-                best_valid_iou = valid_iou
-                save_checkpoint({
-                    'epoch': epoch + 1,
-                    'arch': 'motion',
-                    'state_dict': model.state_dict(),
-                    'optimizer' : optimizer.state_dict(),
-                    'scheduler': scheduler.state_dict()
-                }, args.log, suffix='_valid_best')
+        # if epoch % ARCH["train"]["report_epoch"] == 0:
+        #     # evaluate on validation set
+        #     print("*" * 70)
+        #     valid_iou = validate(valid_loader, model, parser.get_xentropy_class_string, epoch, tb_logger)
+        #     if valid_iou > best_valid_iou:
+        #         best_valid_iou = valid_iou
+        #         save_checkpoint({
+        #             'epoch': epoch + 1,
+        #             'arch': 'motion',
+        #             'state_dict': model.state_dict(),
+        #         }, args.log, suffix='_valid_best')
+        print('Finished One Epoch Training and Save Ckpt!')
     print("*" * 80)
     print('Finished Training')
         
@@ -245,14 +225,14 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
     losses_rot = AverageMeter('Loss_rot', ':.4f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, losses],
+        [batch_time, losses, losses_tran, losses_rot],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
     model.train()
 
     end = time.time()
-    for i, (in_vol, _, _, _, _, _, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in enumerate(train_loader):
+    for i, (in_vol, _, _, _, _, path_name, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in tqdm(enumerate(train_loader)):
         # measure data loading time
         data_time.update(time.time() - end)
         in_vol = in_vol.cuda()
@@ -260,7 +240,14 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         rot_labels = rot_list[-1].cuda().float()
         
         # compute output and loss
-        loss, tran, rot = model(in_vol[:,-1],in_vol[:,-2],tran_labels, rot_labels)
+        loss, tran, rot = model(in_vol,tran_labels, rot_labels)
+        if i % 10 == 0:
+            print('***********')
+            print('output tran:',tran.data)
+            print('labels tran:',tran_labels)
+            print('output rot:',rot.data)
+            print('labels rot:',rot_labels)
+            print('loss:',loss)
         loss_sum = loss['sum']
         loss_tran = loss['tran']
         loss_rot = loss['rot']
@@ -278,7 +265,7 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % 40 == 0:
+        if i % 20 == 0:
             progress.display(i)
             print('train time left: ',calculate_estimate(max_epoch,epoch,i,len(train_loader),data_time.avg, batch_time.avg))
             
@@ -308,7 +295,7 @@ def validate(val_loader, model, class_func, epoch, logger):
         
     with torch.no_grad():
         end = time.time()
-        for i, (in_vol, _, proj_labels, _, _, _, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in enumerate(val_loader):
+        for i, (in_vol, _, proj_labels, _, _, _, _, _, _, _, _, _, _, _, _,tran_list, rot_list) in tqdm(enumerate(val_loader)):
             # measure data loading time
             data_time.update(time.time() - end)
             in_vol = in_vol.cuda()
@@ -343,7 +330,10 @@ def validate(val_loader, model, class_func, epoch, logger):
     logger.add_scalar('valid_loss_rot', losses_rot.avg, epoch)
     
     return losses.avg
-    
+   
+def weights_init(m):
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_in') 
 
 def calculate_estimate(max_epoch, epoch, iter, len_data, data_time_t, batch_time_t):
         estimate = int((data_time_t + batch_time_t) * (len_data * max_epoch - (iter + 1 + epoch * len_data)))
@@ -402,26 +392,7 @@ class ProgressMeter(object):
 
 if __name__ == '__main__':   
     main()
-    # import yaml
-    # from utility.geometry import get_transformation_matrix_quaternion
-    # from utility.dataset.kitti.utils import write_poses, load_calib
-    # ARCH = yaml.safe_load(open('config/arch/mos.yml', 'r'))
-    # DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
-    # model = MotionNet()
-    # optimizer = torch.optim.Adam([{'params': model.parameters()}],
-    #                                 lr=ARCH["train"]["lr"],
-    #                                 weight_decay=ARCH["train"]["w_decay"])
-    # steps_per_epoch = 1000
-    # up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
-    # final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
-    # scheduler = warmupLR(optimizer=optimizer,
-    #                     lr=ARCH["train"]["lr"],
-    #                     warmup_steps=up_steps,
-    #                     momentum=ARCH["train"]["momentum"],
-    #                     decay=final_decay)
-    # for i in range(10):
-    #     optimizer.step()
-    #     print(optimizer.state_dict()['param_groups'][0]['lr'])
+
         
 
     

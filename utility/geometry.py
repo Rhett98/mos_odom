@@ -26,9 +26,24 @@ def get_translation_from_transformation_matrix(matrix, device='cpu'):
 
 def quaternion_to_rot_matrix(quaternion):
     return kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion, order=kornia.geometry.conversions.QuaternionCoeffOrder.WXYZ)
+
+def euler_to_rot_matrix(input):
+    return kornia.geometry.conversions.angle_axis_to_rotation_matrix(input)
+
+def get_euler_from_transformation_matrix(matrix):
+    rotation_matrix = torch.tensor(matrix[:3, :3])
+    return kornia.geometry.conversions.rotation_matrix_to_angle_axis(rotation_matrix)
     
 def get_transformation_matrix_quaternion(translation, quaternion, device='cpu'):
         rotation_matrix = quaternion_to_rot_matrix(quaternion)
+        transformation_matrix = torch.zeros((rotation_matrix.shape[0], 4, 4), device=device)
+        transformation_matrix[:, :3, :3] = rotation_matrix
+        transformation_matrix[:, 3, 3] = 1
+        transformation_matrix[:, :3, 3] = translation
+        return transformation_matrix
+
+def get_transformation_matrix_euler(translation, euler, device='cpu'):
+        rotation_matrix = euler_to_rot_matrix(euler)
         transformation_matrix = torch.zeros((rotation_matrix.shape[0], 4, 4), device=device)
         transformation_matrix[:, :3, :3] = rotation_matrix
         transformation_matrix[:, 3, 3] = 1

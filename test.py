@@ -1,4 +1,5 @@
 import yaml
+import math
 import torch
 from tqdm import tqdm
 from utility.dataset.kitti.parser_multiscan import Parser
@@ -109,17 +110,34 @@ def translation_error(pose_error):
     trans_error = np.sqrt(dx**2+dy**2+dz**2)
     return trans_error
 
+
 if __name__ == '__main__':
-    loss = nn.L1Loss()
-    tran = torch.tensor([0.6632,0.0047,0.0086])
-    tran_l = torch.tensor([0.6755,0.0033,0.0138])
-    rot = torch.tensor([ 0.4232, -0.0019,  0.0005,  0.0033])
-    rot_l = torch.tensor([ 1, -2.4459e-04,  7.2978e-04,  1.9661e-03])
-    rot_norm = rot/torch.norm(rot)
+    output1 = torch.tensor([[0.5181, 0.0048, 0.0169],
+        [0.5072, 0.0039, 0.0171]]) 
+    output2 = torch.tensor([[ 1.0000, -0.0019, -0.0016, -0.0029],
+        [ 1.0000, -0.0011, -0.0013, -0.0043]])
+    labels1 = torch.tensor([[0.7916, 0.0237, 0.0039],
+        [0.1996, 0.0059, 0.0072]]) 
+    labels2 = torch.tensor([[ 1.0000, -0.0019, -0.0016, -0.0029],
+        [ 1.0000, -0.0011, -0.0013, -0.0043]])
+
+    l1loss = nn.L1Loss()
+    l2loss = nn.MSELoss()
+    # tran = torch.tensor([0.6632,0.0047,0.0086])
+    # tran_l = torch.tensor([0.6755,0.0033,0.0138])
+    # rot = torch.tensor([ 0.4232, -0.0019,  0.0005,  0.0033])
+    # rot_l = torch.tensor([ 1, -2.4459e-04,  7.2978e-04,  1.9661e-03])
+    # rot_norm = rot/torch.norm(rot)
+    tran = output1[1,:]
+    tran_l = labels1[1,:]
+    rot = output2[1,:]
+    rot_l = labels2[1,:]
+    rot_norm = output2/torch.norm(output2,dim=1).unsqueeze(1) 
+    print(rot_norm)
     pose = get_pose(tran, rot)
     pose_l = get_pose(tran_l, rot_l)
-    print(pose)
     print(pose_l)
     err = np.linalg.inv(pose_l) @ pose
-    print("rot err:",rotation_error(err), loss(rot_l, rot))
-    print("tran err:",translation_error(err), loss(tran_l, tran))
+    print("tran err:",translation_error(err), l1loss(tran_l, tran))
+    print("rot err:",rotation_error(err), l2loss(rot_l, rot_norm[1,:]))
+    

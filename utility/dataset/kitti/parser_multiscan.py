@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 
 from utility.laserscan import LaserScan, SemLaserScan
 from utility.dataset.kitti.utils import load_poses, load_calib
-from utility.geometry import get_quaternion_from_transformation_matrix, get_translation_from_transformation_matrix
+from utility.geometry import get_quaternion_from_transformation_matrix, get_translation_from_transformation_matrix,get_euler_from_transformation_matrix
 
 EXTENSIONS_SCAN = ['.bin']
 EXTENSIONS_LABEL = ['.label']
@@ -232,13 +232,13 @@ class SemanticKitti(Dataset):
             if self.use_residual:
                 for i in range(self.n_input_scans):
                     exec("residual_file_" + str(i+1) + " = " + "self.residual_files_" + str(i+1) + "[seq][index]")
-
             index_pose = self.poses[seq][index]
             # get translation and _quaternion between index_pose and current_pose
             if index != current_index:
                 relative_pose = np.linalg.inv(index_pose).dot(current_pose)
                 trans_list.append(get_translation_from_transformation_matrix(relative_pose))
-                quaternion_list.append(get_quaternion_from_transformation_matrix(relative_pose))
+                # quaternion_list.append(get_quaternion_from_transformation_matrix(relative_pose))
+                quaternion_list.append(get_euler_from_transformation_matrix(relative_pose))
             # open a semantic laserscan
             DA = False
             flip_sign = False
@@ -625,11 +625,43 @@ class Parser():
         label = SemanticKitti.map(label, self.learning_map_inv)
         # put label in color
         return SemanticKitti.map(label, self.color_map)
+    
+from scipy.spatial.transform import Rotation as R
 
+def get_x_q(pose: torch.Tensor):
+    """ Get x, q vectors from pose matrix 
+    Args:
+        pose (Bx4x4 array): relative pose
+    Returns:
+        x (Bx3x1 array): translation 
+        q (Bx4x1 array): quarternion
+    """
+    x = pose[:, :-1, -1]
+    rot = pose[:, :-1, :-1] 
+    r = R.from_matrix(rot.detach().numpy())
+    q = torch.from_numpy(r.as_quat())
+    
+    return x.float(), q.float()
+
+def get_pose(x, q):
+    """ Get 4x4 pose from x and q numpy vectors
+    Args:
+        x (3x1 array): translation 
+        q (4x1 array): quarternion
+    Returns:
+        pose (4x4 array): transformation pose
+    """
+    pose = np.identity(4)
+    r = R.from_quat(q)
+    rot = r.as_matrix()
+    pose[:-1, :-1] = rot
+    pose[:-1, -1] = x
+    
+    return pose
     
 if __name__ == '__main__':
     import yaml
-    from utility.geometry import get_transformation_matrix_quaternion
+    from utility.geometry import get_transformation_matrix_euler
     from utility.dataset.kitti.utils import write_poses, load_calib
     ARCH = yaml.safe_load(open('config/arch/mos-motion.yml', 'r'))
     DATA = yaml.safe_load(open('config/data/local-test.yaml', 'r'))
@@ -651,31 +683,34 @@ if __name__ == '__main__':
                             workers=ARCH["train"]["workers"],
                             gt=True,
                             shuffle_train=True)
-    # loader = parse.get_train_set()
+    loader = parse.get_train_set()
     # assert len(loader) > 0
-    
     # load calibrations
     calib_file = os.path.join("/home/yu/Resp/dataset/sequences/08/calib.txt")
     T_cam_velo = load_calib(calib_file)
     T_cam_velo = np.asarray(T_cam_velo).reshape((4, 4))
     T_velo_cam = np.linalg.inv(T_cam_velo)
     last_pose = np.eye(4)
-    loader = parse.train_dataset
-    for i in range(5,10):
-        proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot = loader.__getitem__(i)
-        print(proj_in.shape)
-        print(trans,rot)
-    # for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
-    #     # relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
-    #     # last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
-    #     print("xxxxxxxxxxxxxxxx")
-    #     print(proj_in.shape)
-    #     print("cccccccccccccc")
-        # print(proj_in[-1,-1,0])
-        # print(rot)
-    # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/08/poses.txt")
+    # loader = parse.train_dataset
+    # for i in range(5,10):
+    #     proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot = loader.__getitem__(i)
+    #     print('********* '+ str(i) + " ***********")
+    #     print(trans[-1],rot[-1])
+    #     print(get_transformation_matrix_euler(trans[-1],rot[-1]))
+    #     print(torch.norm(rot[-1]))
+    for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot) in enumerate(loader):
+        # relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
+        # last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
+        print('********* '+ str(i) + " ***********")
+        print(trans[-1],rot[-1])
+        print(get_transformation_matrix_euler(trans[-1],rot[-1]))
+        print(torch.norm(rot[-1]))
+    # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/06/poses.txt")
     # poses = np.array(load_poses(pose_file))
     # inv_frame0 = np.linalg.inv(poses[0])
+    # print(poses.shape)
+    # print(poses[9, :])
+    # print(poses[10, :])
 
     # # load calibrations
     # calib_file = os.path.join("/home/yu/Resp/dataset/sequences/08/calib.txt")
@@ -698,12 +733,3 @@ if __name__ == '__main__':
     #     # print(get_quaternion_from_transformation_matrix(p))
     #     # print(get_translation_from_transformation_matrix(p))
         
-    # import torch.nn as nn
-    # trans = get_translation_from_transformation_matrix(relative_poses[10])
-    # rot= get_quaternion_from_transformation_matrix(relative_poses[10])
-    # print(trans.shape, rot.shape)
-    # trans_pre = torch.randn(3)
-    # rot_pre = torch.randn(4)
-    # l1_loss = nn.L1Loss(reduction='mean')
-    # print(l1_loss(trans, trans_pre))
-    # print(l1_loss(rot, rot_pre/torch.norm(rot_pre)))

@@ -18,6 +18,7 @@ import torch.utils.data
 from utility.KNN import KNN
 from utility.dataset.kitti.parser_multiscan import Parser
 from modules.model_motion_2d import MotionNet
+from modules.lonet import OdomRegNet
 from utility.warmupLR import *
 from utility.geometry import get_transformation_matrix_quaternion
 from utility.dataset.kitti.utils import write_poses, load_calib
@@ -72,6 +73,7 @@ class User():
 
     with torch.no_grad():
         self.model = MotionNet()
+        # self.model = OdomRegNet(5)
         self.model = load_model(modeldir, self.model)
 
     # GPU?

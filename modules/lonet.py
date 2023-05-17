@@ -7,6 +7,7 @@ sys.path.append(path)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from modules.losses import HWSLoss
 
 class FireConv(nn.Module):
     """ FireConv layer"""
@@ -150,6 +151,9 @@ class OdomRegNet(nn.Module):
     """ Main odometry regression network - 2-stream net """
     def __init__(self, feature_channels=8):
         super(OdomRegNet, self).__init__()
+        self.l1_loss = nn.L1Loss(reduction='mean').float()
+        self.l2_loss = nn.MSELoss(reduction='mean').float()
+        self.hws_loss = HWSLoss()
 
         self.mask_encode = MaskEncoder(feature_channels) # [xyz range intensity normals]
 
@@ -161,14 +165,15 @@ class OdomRegNet(nn.Module):
         self.fire_3 = FireConv(512, 80, 384, 384)
         self.fire_4 = FireConv(768, 80, 384, 384)
         
-        self.pool_2 = nn.MaxPool2d(kernel_size=3, stride=(2,2), padding=1)
-        self.fc1 = nn.Linear(393216, 512)
+        # self.pool_2 = nn.MaxPool2d(kernel_size=3, stride=(2,2), padding=1)
+        self.pool_2 = nn.AdaptiveAvgPool2d((2, 4))
+        self.fc1 = nn.Linear(6144, 512)
         self.dropout = nn.Dropout2d(p=0.5)
         
         self.fc2 = nn.Linear(512, 3)
         self.fc3 = nn.Linear(512, 4) 
     
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: torch.Tensor ,tran_labels, rot_labels) -> torch.Tensor:
         x_mask_out = torch.cat([self.mask_encode(x), self.mask_encode(y)], 1) # B, C',H, W
         x_f1 = self.fire_1(x_mask_out) 
         x_f2 = self.fire_2(x_f1)
@@ -177,19 +182,29 @@ class OdomRegNet(nn.Module):
         x_p1 = self.pool_1(x_se)
         x_f3 = self.fire_3(x_p1)
         x_f4 = self.fire_4(x_f3)
-        
         x_p2 = self.pool_2(x_f4)
         x_p2 = x_p2.view(x_p2.size(0), -1) # flatten
-        print(x_p2.shape)
+
         x_fc1 = self.dropout(self.fc1(x_p2))
         
-        x_out = self.fc2(x_fc1) # translation x
-        q_out = self.fc3(x_fc1) # rotation quarternion q
-        return x_out, q_out
+        translation = self.fc2(x_fc1) # translation x
+        rotation = self.fc3(x_fc1) # rotation quarternion q
+        
+        rotation = rotation/torch.norm(rotation,dim=1).unsqueeze(1) 
+
+        loss = {}
+        loss_tran = self.l1_loss(tran_labels, translation)
+        loss_rot =  self.l2_loss(rot_labels, rotation)
+        loss_sum = self.hws_loss(loss_tran, loss_rot)
+
+        loss['tran'] = loss_tran
+        loss['rot'] = loss_rot
+        loss['sum'] = loss_sum
+        return loss, translation, rotation
     
 if __name__ == '__main__':
     from thop import profile
-    model = OdomRegNet()
-    dummy_input = torch.randn(1, 8, 64, 2048), torch.randn(1, 8, 64, 2048)
+    model = OdomRegNet(5)
+    dummy_input = torch.randn(1, 5, 64, 2048),torch.randn(1, 5, 64, 2048),torch.randn(1, 3),torch.randn(1, 4),
     flops, params = profile(model, (dummy_input))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))
