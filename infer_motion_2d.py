@@ -19,8 +19,9 @@ from utility.KNN import KNN
 from utility.dataset.kitti.parser_multiscan import Parser
 from modules.model_motion_2d import MotionNet
 from modules.lonet import OdomRegNet
+from modules.nets.deeplio import DeepLO
 from utility.warmupLR import *
-from utility.geometry import get_transformation_matrix_quaternion
+from utility.geometry import get_transformation_matrix_quaternion, get_transformation_matrix_euler
 from utility.dataset.kitti.utils import write_poses, load_calib
 
 def load_model(weight_path, model):
@@ -72,7 +73,8 @@ class User():
     self.T_velo_cam = np.linalg.inv(T_cam_velo)
 
     with torch.no_grad():
-        self.model = MotionNet()
+        # self.model = MotionNet()
+        self.model = DeepLO((3,64,2048))
         # self.model = OdomRegNet(5)
         self.model = load_model(modeldir, self.model)
 
@@ -136,11 +138,12 @@ class User():
         proj_in = proj_in.cuda()
 
         #compute output
-        loss, tran, rot = self.model(proj_in[:,-1],proj_in[:,-2],tran_labels, rot_labels)
+        loss, tran, rot = self.model(proj_in,tran_labels, rot_labels)
         
         # save pose
-        relative_matrix = get_transformation_matrix_quaternion(tran, rot)
-        
+        # relative_matrix = get_transformation_matrix_quaternion(tran, rot)
+        relative_matrix = get_transformation_matrix_euler(tran, rot)
+    
         pose_path = os.path.join(self.logdir, "sequences",
                             path_seq, "poses.txt")
         

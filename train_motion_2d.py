@@ -17,6 +17,7 @@ from tensorboardX import SummaryWriter as Logger
 from utility.dataset.kitti.parser_multiscan import Parser
 from modules.model_motion_2d import MotionNet
 from modules.lonet import OdomRegNet
+from modules.psmnet import PSMNet
 from modules.nets.deeplio import DeepLO
 from utility.warmupLR import *
 
@@ -132,8 +133,9 @@ def main_worker(args):
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
         # model = MotionNet()
-        model = DeepLO((3,64,2048))
+        # model = DeepLO((3,64,2048))
         # model = OdomRegNet(5)
+        model = PSMNet(192)
     # model.apply(weights_init)
     
     if torch.cuda.is_available():
@@ -240,7 +242,7 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         rot_labels = rot_list[-1].cuda().float()
         
         # compute output and loss
-        loss, tran, rot = model(in_vol,tran_labels, rot_labels)
+        loss, tran, rot = model(in_vol[:,-1],in_vol[:,-2],tran_labels, rot_labels)
         if i % 10 == 0:
             print('***********')
             print('output tran:',tran.data)

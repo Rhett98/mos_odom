@@ -17,9 +17,9 @@ class DeepLO(nn.Module):
         self.p = 0.25
         self.input_shape = input_shape
 
-        self.lidar_feat_net = LidarPointSegFeat(self.input_shape)
+        # self.lidar_feat_net = LidarPointSegFeat(self.input_shape)
         # self.lidar_feat_net = LidarFlowNetFeat(self.input_shape)
-        # self.lidar_feat_net = LidarResNetFeat(self.input_shape)
+        self.lidar_feat_net = LidarResNetFeat(self.input_shape)
         # self.lidar_feat_net = LidarSimpleFeat1(self.input_shape)
         self.odom_feat_net = OdomFeatFC(128)
 
