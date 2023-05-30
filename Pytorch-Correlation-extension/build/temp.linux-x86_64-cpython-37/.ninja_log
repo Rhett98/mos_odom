@@ -1,0 +1,4 @@
+# ninja log v5
+0	26606	1684930355599413471	/home/yu/Resp/Pytorch-Correlation-extension/build/temp.linux-x86_64-cpython-37/Correlation_Module/correlation.o	53f5b81482aec919
+15	21805	1684931702556956032	/home/yu/Resp/Pytorch-Correlation-extension/build/temp.linux-x86_64-cpython-37/Correlation_Module/correlation.o	8fa96d62d276629f
+16	22786	1684931703536968852	/home/yu/Resp/Pytorch-Correlation-extension/build/temp.linux-x86_64-cpython-37/Correlation_Module/correlation_sampler.o	39107e3793091aa3

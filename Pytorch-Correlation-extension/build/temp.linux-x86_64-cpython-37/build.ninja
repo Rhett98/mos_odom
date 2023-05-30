@@ -1,0 +1,26 @@
+ninja_required_version = 1.3
+cxx = c++
+
+cflags = -pthread -B /home/yu/anaconda3/envs/RVdetect/compiler_compat -Wl,--sysroot=/ -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -Wstrict-prototypes -fPIC -I/home/yu/Resp/include -I/usr/local/cuda/include/ -I/home/yu/anaconda3/envs/RVdetect/lib/python3.7/site-packages/torch/include -I/home/yu/anaconda3/envs/RVdetect/lib/python3.7/site-packages/torch/include/torch/csrc/api/include -I/home/yu/anaconda3/envs/RVdetect/lib/python3.7/site-packages/torch/include/TH -I/home/yu/anaconda3/envs/RVdetect/lib/python3.7/site-packages/torch/include/THC -I/home/yu/anaconda3/envs/RVdetect/include/python3.7m -c
+post_cflags = -fopenmp -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=spatial_correlation_sampler_backend -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++14
+cuda_dlink_post_cflags = 
+ldflags = 
+
+rule compile
+  command = $cxx -MMD -MF $out.d $cflags -c $in -o $out $post_cflags
+  depfile = $out.d
+  deps = gcc
+
+
+
+
+
+build /home/yu/Resp/Pytorch-Correlation-extension/build/temp.linux-x86_64-cpython-37/Correlation_Module/correlation.o: compile /home/yu/Resp/Pytorch-Correlation-extension/Correlation_Module/correlation.cpp
+build /home/yu/Resp/Pytorch-Correlation-extension/build/temp.linux-x86_64-cpython-37/Correlation_Module/correlation_sampler.o: compile /home/yu/Resp/Pytorch-Correlation-extension/Correlation_Module/correlation_sampler.cpp
+
+
+
+
+
+
+
