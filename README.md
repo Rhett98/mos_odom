@@ -11,3 +11,5 @@ python scripts/visualize_mos.py -d../dataset -p log -s 8
 
 ## evaluate
 python scripts/evaluate_mos.py -d ../dataset -p log -s valid
+
+python train_motion_pwc.py -d ../dataset -ac config/arch/mos-motion-pwc.yml -dc config/data/motion.yaml
