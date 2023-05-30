@@ -9,6 +9,7 @@ import datetime
 from tqdm import tqdm
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
@@ -133,9 +134,9 @@ def main_worker(args):
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
         # model = MotionNet()
-        # model = DeepLO((3,64,2048))
+        model = DeepLO((3,64,2048))
         # model = OdomRegNet(5)
-        model = PSMNet(192)
+        # model = PSMNet(192)
     # model.apply(weights_init)
     
     if torch.cuda.is_available():
@@ -180,6 +181,7 @@ def main_worker(args):
                   .format(model_path, checkpoint['epoch']))
         else:
             print("=> no checkpoint found in '{}'".format(args.pretrained))
+            model.apply(init_weights)
     
     cudnn.benchmark = True
     
@@ -242,7 +244,7 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         rot_labels = rot_list[-1].cuda().float()
         
         # compute output and loss
-        loss, tran, rot = model(in_vol[:,-1],in_vol[:,-2],tran_labels, rot_labels)
+        loss, tran, rot = model(in_vol,tran_labels, rot_labels)
         if i % 10 == 0:
             print('***********')
             print('output tran:',tran.data)
@@ -332,10 +334,12 @@ def validate(val_loader, model, class_func, epoch, logger):
     logger.add_scalar('valid_loss_rot', losses_rot.avg, epoch)
     
     return losses.avg
-   
-def weights_init(m):
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_in') 
+
+def init_weights(m):
+    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        init.kaiming_uniform_(m.weight)
+        if m.bias is not None:
+            init.zeros_(m.bias)
 
 def calculate_estimate(max_epoch, epoch, iter, len_data, data_time_t, batch_time_t):
         estimate = int((data_time_t + batch_time_t) * (len_data * max_epoch - (iter + 1 + epoch * len_data)))

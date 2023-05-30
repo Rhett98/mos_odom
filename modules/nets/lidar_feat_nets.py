@@ -39,13 +39,13 @@ def conv( batch_norm, in_planes, out_planes, kernel_size=(3, 3), stride=1):
             nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(padding_h, padding_w),
                       bias=False),
             nn.BatchNorm2d(out_planes),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
     else:
         return nn.Sequential(
             nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(padding_h, padding_w),
                       bias=True),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
 
 class LidarPointSegFeat(nn.Module):
@@ -67,7 +67,7 @@ class LidarPointSegFeat(nn.Module):
         #self.fire12 = nn.Sequential(Fire(768, 96, 384, 384, bn=True, bn_d=self.bn_d, bypass=False),
         #                            Fire(768, 96, 384, 384, bn=True, bn_d=self.bn_d, bypass=False))
 
-        self.fc1 = nn.Linear(1536, 128)
+        self.fc1 = nn.Linear(1536, 256)
 
         if self.p > 0.:
             self.drop = nn.Dropout(self.p)
@@ -80,7 +80,7 @@ class LidarPointSegFeat(nn.Module):
         :return: outputs: features of dim [BxTxN]
         mask0: predicted mask to each time sequence
         """
-        imgs_xyz, imgs_normals = x[:,:,:3,:,:], x[:,:,5:,:,:]
+        imgs_xyz, imgs_normals = x[:,:,1:4,:,:], x[:,:,5:,:,:]
         b, s, c, h, w = imgs_xyz.shape
         imgs_xyz = imgs_xyz.reshape(b, s*c, h, w)
         imgs_normals = imgs_normals.reshape(b, s*c, h, w)
@@ -95,7 +95,8 @@ class LidarPointSegFeat(nn.Module):
         else:
             x = x_feat_0 - x_feat_1
 
-        x = F.relu(self.fc1(x), inplace=False)
+        x = F.leaky_relu(self.fc1(x), inplace=False)
+        # x = self.fc1(x)
 
         if self.p > 0.:
             x = self.drop(x)
@@ -118,7 +119,7 @@ class LidarFlowNetFeat(nn.Module):
         if self.p > 0:
             self.drop = nn.Dropout(self.p)
 
-        self.fc1 = nn.Linear(2048, 128)
+        self.fc1 = nn.Linear(2048, 256)
         # self.output_shape = self.calc_output_shape()
 
     def forward(self, x):
@@ -127,13 +128,14 @@ class LidarFlowNetFeat(nn.Module):
         :return: outputs: features of dim [BxTxN]
         mask0: predicted mask to each time sequence
         """
-        imgs_xyz, imgs_normals = x[:,:,:3,:,:], x[:,:,5:,:,:]
+        imgs_xyz, imgs_normals = x[:,:,1:4,:,:], x[:,:,5:,:,:]
 
         b, s, c, h, w = imgs_xyz.shape
         imgs_xyz = imgs_xyz.reshape(b, s*c, h, w)
         imgs_normals = imgs_normals.reshape(b, s*c, h, w)
 
         x_feat_0 = self.encoder1(imgs_xyz)
+        # print("********************************************")
         x_feat_1 = self.encoder2(imgs_normals)
 
         if self.fusion == 'cat':
@@ -143,7 +145,7 @@ class LidarFlowNetFeat(nn.Module):
         else:
             x = x_feat_0 - x_feat_1
 
-        x = F.relu(self.fc1(x), inplace=False)
+        x = F.leaky_relu(self.fc1(x), inplace=False)
 
         if self.p > 0.:
             x = self.drop(x)
@@ -156,7 +158,7 @@ class LidarFlowNetFeat(nn.Module):
 class LidarResNetFeat(nn.Module):
     def __init__(self, input_shape):
         super(LidarResNetFeat, self).__init__()
-        self.p = 0.25
+        self.p = 0
         self.fusion = 'cat'
         c, h, w = input_shape
         self.encoder1 = ResNetEncoder([2*c, h, w])
@@ -165,12 +167,12 @@ class LidarResNetFeat(nn.Module):
         if self.p > 0:
             self.drop = nn.Dropout(self.p)
 
-        self.fc1 = nn.Linear(1024, 128)
+        self.fc1 = nn.Linear(1024, 256)
 
         # self.output_shape = self.calc_output_shape()
 
     def forward(self, x):
-        imgs_xyz, imgs_normals = x[:,:,:3,:,:], x[:,:,5:,:,:]
+        imgs_xyz, imgs_normals = x[:,:,1:4,:,:], x[:,:,5:,:,:]
 
         b, s, c, h, w = imgs_xyz.shape
         imgs_xyz = imgs_xyz.reshape(b, s*c, h, w)
@@ -189,7 +191,7 @@ class LidarResNetFeat(nn.Module):
         if self.p > 0.:
             x = self.drop(x)
 
-        x = F.relu(self.fc1(x))
+        x = F.leaky_relu(self.fc1(x))
 
         # reshape output to BxTxCxHxW
         x = x.view(b, num_flat_features(x, 1))
@@ -219,7 +221,7 @@ class LidarSimpleFeat1(nn.Module):
         :return: outputs: features of dim [BxN]
         mask0: predicted mask to each time sequence
         """
-        imgs_xyz, imgs_normals = x[:,:,:3,:,:], x[:,:,5:,:,:]
+        imgs_xyz, imgs_normals = x[:,:,1:4,:,:], x[:,:,5:,:,:]
 
         b, s, c, h, w = imgs_xyz.shape
         imgs_xyz = imgs_xyz.reshape(b, s*c, h, w)
@@ -266,11 +268,14 @@ class FlowNetEncoder(nn.Module):
 
     def forward(self, x):
         out_conv2 = self.conv2(self.conv1(x))
+        # print("out_conv2",out_conv2)
         out_conv3 = self.conv3_1(self.conv3(out_conv2))
         out_conv4 = self.conv4_1(self.conv4(out_conv3))
+        # print("out_conv4",out_conv4)
         out_conv5 = self.conv5_1(self.conv5(out_conv4))
         out_conv6 = self.conv6(out_conv5)
         out = self.pool(out_conv6)
+        # print("out after pool",out)
         out = torch.flatten(out, 1)
         return out
 

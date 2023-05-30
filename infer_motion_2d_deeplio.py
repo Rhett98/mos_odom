@@ -90,27 +90,35 @@ class User():
       self.model.cuda()
 
   def infer(self):
+    cnn = []
+    knn = []
     if self.split == None:
 
-        self.infer_subset(loader=self.parser.get_train_set())
+        self.infer_subset(loader=self.parser.get_train_set(),
+                          to_orig_fn=self.parser.to_original, cnn=cnn, knn=knn)
 
         # do valid set
-        self.infer_subset(loader=self.parser.get_valid_set())
+        self.infer_subset(loader=self.parser.get_valid_set(),
+                          to_orig_fn=self.parser.to_original, cnn=cnn, knn=knn)
         # do test set
-        self.infer_subset(loader=self.parser.get_test_set())
+        self.infer_subset(loader=self.parser.get_test_set(),
+                          to_orig_fn=self.parser.to_original, cnn=cnn, knn=knn)
 
 
     elif self.split == 'valid':
-        self.infer_subset(loader=self.parser.get_valid_set())
+        self.infer_subset(loader=self.parser.get_valid_set(),
+                        to_orig_fn=self.parser.to_original, cnn=cnn, knn=knn)
     elif self.split == 'train':
-        self.infer_subset(loader=self.parser.get_train_set())
+        self.infer_subset(loader=self.parser.get_train_set(),
+                        to_orig_fn=self.parser.to_original, cnn=cnn, knn=knn)
     else:
-        self.infer_subset(loader=self.parser.get_test_set())
+        self.infer_subset(loader=self.parser.get_test_set(),
+                        to_orig_fn=self.parser.to_original, cnn=cnn, knn=knn)
     print("Finished Infering")
 
     return
 
-  def infer_subset(self, loader):
+  def infer_subset(self, loader, to_orig_fn,cnn,knn):
     # switch to evaluate mode
     self.model.eval()
     total_time=0
@@ -128,22 +136,16 @@ class User():
         tran_labels = tran_list[-1].cuda().float()
         rot_labels = rot_list[-1].cuda().float()
         proj_in = proj_in.cuda()
-        print(path_name)
+
         #compute output
         loss, tran, rot = self.model(proj_in,tran_labels, rot_labels)
-        if i % 10 == 0:
-            print('***********')
-            print('output tran:',tran.data)
-            print('labels tran:',tran_labels)
-            print('output rot:',rot.data)
-            print('labels rot:',rot_labels)
-            print('loss:',loss)
+        
         # save pose
         # relative_matrix = get_transformation_matrix_quaternion(tran, rot)
         relative_matrix = get_transformation_matrix_euler(tran, rot)
-
+    
         pose_path = os.path.join(self.logdir, "sequences",
-                            path_seq, "pose_pre.txt")
+                            path_seq, "poses.txt")
         
         # write pose and update last_pose
         last_pose = write_poses(pose_path, np.dot(self.T_cam_velo,np.dot(relative_matrix,self.T_velo_cam)), last_pose)

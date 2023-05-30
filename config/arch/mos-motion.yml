@@ -4,8 +4,8 @@
 train:
   loss: "xentropy"      # must be either xentropy or iou
   optimizer: "Adam"       # SDG or Adam
-  max_epochs: 40
-  lr: 0.0001               # learning rate
+  max_epochs: 200
+  lr: 0.005              # learning rate
   wup_epochs: 1          # warmup during first XX epochs (can be float)
   momentum: 0.9          # momentum
   lr_decay: 0.99         # learning rate decay per epoch after initial cycle (from min lr)

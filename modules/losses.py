@@ -145,7 +145,7 @@ class Lovasz_softmax(nn.Module):
     def forward(self, probas, labels):
         return lovasz_softmax(probas, labels, self.classes, self.per_image, self.ignore)
     
-    
+
 class UncertaintyLoss(nn.Module):
     def __init__(self, v_num):
         super(UncertaintyLoss, self).__init__()
@@ -166,8 +166,6 @@ class HWSLoss(nn.Module):
         super(HWSLoss, self).__init__()
         self.sx = nn.Parameter(torch.Tensor([sx]))
         self.sq = nn.Parameter(torch.Tensor([sq]))
-        self.eps = eps # numerical stability during backprop
-        self.mse = nn.MSELoss() # TODO: try experimenting with L1-norm
         
     def forward(self, loss_x, loss_q):        
         loss = torch.exp(-self.sx)*loss_x + self.sx \

@@ -112,32 +112,58 @@ def translation_error(pose_error):
 
 
 if __name__ == '__main__':
-    output1 = torch.tensor([[0.5181, 0.0048, 0.0169],
-        [0.5072, 0.0039, 0.0171]]) 
-    output2 = torch.tensor([[ 1.0000, -0.0019, -0.0016, -0.0029],
-        [ 1.0000, -0.0011, -0.0013, -0.0043]])
-    labels1 = torch.tensor([[0.7916, 0.0237, 0.0039],
-        [0.1996, 0.0059, 0.0072]]) 
-    labels2 = torch.tensor([[ 1.0000, -0.0019, -0.0016, -0.0029],
-        [ 1.0000, -0.0011, -0.0013, -0.0043]])
+    # output1 = torch.tensor([[0.5181, 0.0048, 0.0169],
+    #     [0.5072, 0.0039, 0.0171]]) 
+    # output2 = torch.tensor([[ 1.0000, -0.0019, -0.0016, -0.0029],
+    #     [ 1.0000, -0.0011, -0.0013, -0.0043]])
+    # labels1 = torch.tensor([[0.7916, 0.0237, 0.0039],
+    #     [0.1996, 0.0059, 0.0072]]) 
+    # labels2 = torch.tensor([[ 1.0000, -0.0019, -0.0016, -0.0029],
+    #     [ 1.0000, -0.0011, -0.0013, -0.0043]])
 
-    l1loss = nn.L1Loss()
-    l2loss = nn.MSELoss()
-    # tran = torch.tensor([0.6632,0.0047,0.0086])
-    # tran_l = torch.tensor([0.6755,0.0033,0.0138])
-    # rot = torch.tensor([ 0.4232, -0.0019,  0.0005,  0.0033])
-    # rot_l = torch.tensor([ 1, -2.4459e-04,  7.2978e-04,  1.9661e-03])
-    # rot_norm = rot/torch.norm(rot)
-    tran = output1[1,:]
-    tran_l = labels1[1,:]
-    rot = output2[1,:]
-    rot_l = labels2[1,:]
-    rot_norm = output2/torch.norm(output2,dim=1).unsqueeze(1) 
-    print(rot_norm)
-    pose = get_pose(tran, rot)
-    pose_l = get_pose(tran_l, rot_l)
-    print(pose_l)
-    err = np.linalg.inv(pose_l) @ pose
-    print("tran err:",translation_error(err), l1loss(tran_l, tran))
-    print("rot err:",rotation_error(err), l2loss(rot_l, rot_norm[1,:]))
-    
+    # l1loss = nn.L1Loss()
+    # l2loss = nn.MSELoss()
+    # # tran = torch.tensor([0.6632,0.0047,0.0086])
+    # # tran_l = torch.tensor([0.6755,0.0033,0.0138])
+    # # rot = torch.tensor([ 0.4232, -0.0019,  0.0005,  0.0033])
+    # # rot_l = torch.tensor([ 1, -2.4459e-04,  7.2978e-04,  1.9661e-03])
+    # # rot_norm = rot/torch.norm(rot)
+    # tran = output1[1,:]
+    # tran_l = labels1[1,:]
+    # rot = output2[1,:]
+    # rot_l = labels2[1,:]
+    # rot_norm = output2/torch.norm(output2,dim=1).unsqueeze(1) 
+    # print(rot_norm)
+    # pose = get_pose(tran, rot)
+    # pose_l = get_pose(tran_l, rot_l)
+    # print(pose_l)
+    # err = np.linalg.inv(pose_l) @ pose
+    # print("tran err:",translation_error(err), l1loss(tran_l, tran))
+    # print("rot err:",rotation_error(err), l2loss(rot_l, rot_norm[1,:]))
+    import torch
+    from spatial_correlation_sampler import SpatialCorrelationSampler
+
+    device = "cpu"
+    batch_size = 1
+    channel = 1
+    H = 10
+    W = 10
+    dtype = torch.float32
+
+    input1 = torch.randint(1, 4, (batch_size, channel, H, W), dtype=dtype, device=device, requires_grad=True)
+    input2 = torch.randint_like(input1, 1, 4).requires_grad_(True)
+
+    #You can either use the function or the module. Note that the module doesn't contain any parameter tensor.
+
+    #module
+
+    correlation_sampler = SpatialCorrelationSampler(
+        kernel_size=3,
+        patch_size=1,
+        stride=2,
+        padding=0,
+        dilation=2,
+        dilation_patch=1)
+    print(input1.shape)
+    out = correlation_sampler(input1, input2)
+    print(out)

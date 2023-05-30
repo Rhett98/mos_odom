@@ -216,12 +216,10 @@ class PSMNet(nn.Module):
         self.avgpool =  nn.AdaptiveAvgPool2d((1, 4))
         rot_out_features = 3
         self.fully_connected_translation = nn.Sequential(
-            torch.nn.ReLU(),
             torch.nn.Linear(in_features=768, out_features=256),
             torch.nn.ReLU(),
             torch.nn.Linear(in_features=256, out_features=3))
         self.fully_connected_rotation = nn.Sequential(
-            torch.nn.ReLU(),
             torch.nn.Linear(in_features=768, out_features=256),
             torch.nn.ReLU(),
             torch.nn.Linear(in_features=256, out_features=rot_out_features))
