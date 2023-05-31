@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from spatial_correlation_sampler import SpatialCorrelationSampler
 
-from utility.weighted_svd import WeightedProcrustes
+from modules.weighted_svd import WeightedProcrustes
 
 def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):   
     return nn.Sequential(
