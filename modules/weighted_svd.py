@@ -40,11 +40,13 @@ def weighted_procrustes(
         weight = weights[i]
         src_centroid = torch.sum(src_points[i] * weight, dim=0, keepdim=True)  # (1, 3)
         ref_centroid = torch.sum(ref_points[i]* weight, dim=0, keepdim=True)  # (1, 3)
+        # delete zero point
         mask = torch.all(src_points[i] == 0, dim=1)
         valid_mask = ~ mask
         valid_src_points = src_points[i][valid_mask]
         valid_ref_points = ref_points[i][valid_mask]
         weight = weight[valid_mask]
+        
         src_points_centered = valid_src_points - src_centroid  # (N, 3)
         ref_points_centered = valid_ref_points - ref_centroid  # (N, 3)
 

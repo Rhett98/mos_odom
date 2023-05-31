@@ -9,7 +9,7 @@ def rotationError(pose_error):
     b = pose_error[:,1,1]
     c = pose_error[:,2,2]
     d = 0.5*(a+b+c-1.0)
-    return torch.arccos(max(min(d,1.0),-1.0))
+    return torch.arccos(torch.clamp(d, -1.0, 1.0))
 
 def translationError(pose_error):
     dx = pose_error[:,0,3]
@@ -19,9 +19,14 @@ def translationError(pose_error):
 
 def RPE(input_m, target_m):
     pose_error = torch.bmm(torch.inverse(input_m), target_m)
-    r_err = rotationError(pose_error)
-    t_err = translationError(pose_error)
-    return t_err + r_err
+    err = torch.norm(pose_error-torch.eye(4))
+    return err 
+
+# def RPE(input_m, target_m):
+#     pose_error = torch.bmm(torch.inverse(input_m), target_m)
+#     r_err = rotationError(pose_error)
+#     t_err = translationError(pose_error)
+#     return t_err + r_err
 
 def valid_RPE(input_m, target_m):
     pose_error = torch.bmm(torch.inverse(input_m), target_m)
@@ -52,4 +57,31 @@ def get_all_err(network_output, target):
         r_err_list.append(r_err)
     return t_err_list, r_err_list
 
+def rotation_error(R_gt, R_est):
+    # 将旋转矩阵或旋转向量转换为四元数
+    q_gt = F.normalize(torch.quaternion.from_rotation_matrix(R_gt), dim=-1)
+    q_est = F.normalize(torch.quaternion.from_rotation_matrix(R_est), dim=-1)
+
+    # 计算四元数之间的角度差
+    q_diff = q_gt.inverse() * q_est
+    angle_diff = 2 * torch.acos(torch.clamp(q_diff.real, -1, 1))
+
+    # 将角度差转换为度量单位（如弧度或角度）
+    # 这里使用弧度作为度量单位
+    error = angle_diff.mean()
+
+    return error
+
+if __name__ == '__main__':
+    x = torch.Tensor([[[ 0.9996, -0.0287,  0.0053,  0.1721],
+                        [ 0.0285,  0.9990,  0.0338,  0.0229],
+                        [-0.0063, -0.0337,  0.9994,  0.0738],
+                        [ 0.0000,  0.0000,  0.0000,  1.0000]]])
+    y = torch.Tensor([[[ 0.9993, -0.0352, -0.0078,  0.2248],
+                        [ 0.0356,  0.9980,  0.0527,  0.0250],
+                        [ 0.0060, -0.0530,  0.9986,  0.0130],
+                        [ 0.0000,  0.0000,  0.0000,  1.0000]]])
+    z = RPE(x, y)
+    # z = valid_RPE(x, y)
+    print(z)
 
