@@ -19,7 +19,8 @@ def translationError(pose_error):
 
 def RPE(input_m, target_m):
     pose_error = torch.bmm(torch.inverse(input_m), target_m)
-    err = torch.norm(pose_error-torch.eye(4))
+    # err = torch.norm(pose_error-torch.eye(4))
+    err = torch.norm(pose_error - torch.eye(4).unsqueeze(0).expand_as(pose_error), dim=(1, 2))
     return err 
 
 # def RPE(input_m, target_m):
