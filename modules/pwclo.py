@@ -196,18 +196,12 @@ class PWCNet(nn.Module):
         return weight_svd(x_in, y_in)
         
     def forward(self, x, y):
-        # print("*"*50)
-        # down sample pc_xyz
-        # print(x[:,0,25:30,25:30])
-        # print(x[:,1,25:30,25:30])
-        # print(x[:,2,25:30,25:30])
-        # print(x[:,3,25:30,25:30])
         x1 = F.interpolate(x[:,1:4], scale_factor=0.5, mode='bicubic')
         x2 = F.interpolate(x1, scale_factor=0.5, mode='bicubic')
         x3 = F.interpolate(x2, scale_factor=0.5, mode='bicubic')
         x4 = F.interpolate(x3, scale_factor=0.5, mode='bicubic')
         x5 = F.interpolate(x4, scale_factor=0.5, mode='bicubic')
-        # print(x5)
+
         y1 = F.interpolate(y[:,1:4], scale_factor=0.5, mode='bicubic')
         y2 = F.interpolate(y1, scale_factor=0.5, mode='bicubic')
         y3 = F.interpolate(y2, scale_factor=0.5, mode='bicubic')
@@ -233,7 +227,6 @@ class PWCNet(nn.Module):
         # pyramid 6 
         # cost volume
         corr6 = self.corr(f16, f26)
-
         corr6 = self.leakyRELU(corr6)
         x = torch.cat((self.conv6_0(corr6), corr6),1)
         x = torch.cat((self.conv6_1(x), x),1)
@@ -244,21 +237,14 @@ class PWCNet(nn.Module):
         up_flow6 = self.deconv6(flow6)
         up_feat6 = self.upfeat6(x)
         # odom predict
-        
-        x5_warp = self.warp(x5, up_flow6*0.625)
+        x5_warp = self.warp(x5, up_flow6)
         pose5 = self.predict_pose(x5_warp, y5)
-        # print(x5)
-        # print("**********")
-        # print(x5_warp)
-        # print("**********")
-        # print(y5)
-        # print("**********")
 
         # pyramid 5 
-        warp5 = self.warp(f25, up_flow6*0.625)
-        corr5 = self.corr(f15, warp5) 
+        warp5 = self.warp(f15, up_flow6)
+        corr5 = self.corr(warp5, f15) 
         corr5 = self.leakyRELU(corr5)
-        x = torch.cat((corr5, f15, up_flow6, up_feat6), 1)
+        x = torch.cat((corr5, f25, up_flow6, up_feat6), 1)
         x = torch.cat((self.conv5_0(x), x),1)
         x = torch.cat((self.conv5_1(x), x),1)
         x = torch.cat((self.conv5_2(x), x),1)
@@ -267,14 +253,14 @@ class PWCNet(nn.Module):
         flow5 = self.predict_flow5(x)
         up_flow5 = self.deconv5(flow5)
         up_feat5 = self.upfeat5(x)
-        x4_warp = self.warp(x4, up_flow5*1.25)
+        x4_warp = self.warp(y4, up_flow5)
         pose4 = self.predict_pose(x4_warp, y4)
 
         # pyramid 4 
-        warp4 = self.warp(f24, up_flow5*1.25)
-        corr4 = self.corr(f14, warp4)  
+        warp4 = self.warp(f14, up_flow5)
+        corr4 = self.corr(warp4, f24)  
         corr4 = self.leakyRELU(corr4)
-        x = torch.cat((corr4, f14, up_flow5, up_feat5), 1)
+        x = torch.cat((corr4, f24, up_flow5, up_feat5), 1)
         x = torch.cat((self.conv4_0(x), x),1)
         x = torch.cat((self.conv4_1(x), x),1)
         x = torch.cat((self.conv4_2(x), x),1)
@@ -283,14 +269,14 @@ class PWCNet(nn.Module):
         flow4 = self.predict_flow4(x)
         up_flow4 = self.deconv4(flow4)
         up_feat4 = self.upfeat4(x)
-        x3_warp = self.warp(x3, up_flow4*2.5)
+        x3_warp = self.warp(x3, up_flow4)
         pose3 = self.predict_pose(x3_warp, y3)
         
         # pyramid 3 
-        warp3 = self.warp(f23, up_flow4*2.5)
-        corr3 = self.corr(f13, warp3) 
+        warp3 = self.warp(f13, up_flow4)
+        corr3 = self.corr(warp3, f23) 
         corr3 = self.leakyRELU(corr3)
-        x = torch.cat((corr3, f13, up_flow4, up_feat4), 1)
+        x = torch.cat((corr3, f23, up_flow4, up_feat4), 1)
         x = torch.cat((self.conv3_0(x), x),1)
         x = torch.cat((self.conv3_1(x), x),1)
         x = torch.cat((self.conv3_2(x), x),1)
@@ -299,14 +285,14 @@ class PWCNet(nn.Module):
         flow3 = self.predict_flow3(x)
         up_flow3 = self.deconv3(flow3)
         up_feat3 = self.upfeat3(x)
-        x2_warp = self.warp(x2, up_flow3*5.0)
+        x2_warp = self.warp(x2, up_flow3)
         pose2 = self.predict_pose(x2_warp, y2)
         
         # pyramid 2 
-        warp2 = self.warp(f22, up_flow3*5.0) 
-        corr2 = self.corr(f12, warp2)
+        warp2 = self.warp(f12, up_flow3) 
+        corr2 = self.corr(warp2, f22)
         corr2 = self.leakyRELU(corr2)
-        x = torch.cat((corr2, f12, up_flow3, up_feat3), 1)
+        x = torch.cat((corr2, f22, up_flow3, up_feat3), 1)
         x = torch.cat((self.conv2_0(x), x),1)
         x = torch.cat((self.conv2_1(x), x),1)
         x = torch.cat((self.conv2_2(x), x),1)
@@ -317,16 +303,19 @@ class PWCNet(nn.Module):
         x = self.dc_conv4(self.dc_conv3(self.dc_conv2(self.dc_conv1(x))))
         flow2 = flow2 + self.dc_conv7(self.dc_conv6(self.dc_conv5(x)))
         up_flow2 = self.deconv2(flow2)
-        x1_warp = self.warp(x1, up_flow2*6.25)
+        x1_warp = self.warp(x1, up_flow2)
         pose1 = self.predict_pose(x1_warp, y1)
-
-        return pose1, pose2, pose3, pose4, pose5
+        
+        final_pose = torch.bmm(pose1, torch.bmm(pose2, torch.bmm(pose3, torch.bmm(pose4, pose5))))
+        return final_pose
 
 
 if __name__ == '__main__':
+    print(torch.version.cuda)
+
     from thop import profile
-    model = PWCNet()
+    model = PWCNet().cuda()
     # dummy_input = torch.randn(1, 5, 64, 2048),torch.randn(1, 5, 64, 2048),torch.randn(1, 3),torch.randn(1, 4),
-    dummy_input = torch.randn(1, 5, 64, 2048),torch.randn(1, 5, 64, 2048),
+    dummy_input = torch.randn(1, 5, 64, 2048).cuda(),torch.randn(1, 5, 64, 2048).cuda(),
     flops, params = profile(model, (dummy_input))
     print('flops: %.2f M, params: %.2f M' % (flops / 1000000.0, params / 1000000.0))

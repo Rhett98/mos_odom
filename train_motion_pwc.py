@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter as Logger
 
 from utility.dataset.kitti.parser_multiscan_pwc import Parser
 from modules.pwclo import PWCNet
-from modules.multiscaleloss import multiscaleEPE, get_all_err
+from modules.multiscaleloss import multiscaleRPE, get_all_err, RPE, valid_RPE
 from utility.warmupLR import *
 
 
@@ -201,17 +201,17 @@ def main_worker(args):
                 'state_dict': model.state_dict(),
             }, args.log, suffix='')
             
-        # if epoch % ARCH["train"]["report_epoch"] == 0:
-        #     # evaluate on validation set
-        #     print("*" * 70)
-        #     valid_iou = validate(valid_loader, model, epoch, tb_logger)
-        #     if valid_iou > best_valid_iou:
-        #         best_valid_iou = valid_iou
-        #         save_checkpoint({
-        #             'epoch': epoch + 1,
-        #             'arch': 'motion',
-        #             'state_dict': model.state_dict(),
-        #         }, args.log, suffix='_valid_best')
+        if epoch % ARCH["train"]["report_epoch"] == 0:
+            # evaluate on validation set
+            print("*" * 70)
+            valid_iou = validate(valid_loader, model, epoch, tb_logger)
+            if valid_iou > best_valid_iou:
+                best_valid_iou = valid_iou
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'arch': 'motion',
+                    'state_dict': model.state_dict(),
+                }, args.log, suffix='_valid_best')
         print('Finished One Epoch Training and Save Ckpt!')
     print("*" * 80)
     print('Finished Training')
@@ -240,9 +240,9 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         # compute output and loss
         optimizer.zero_grad()
         output = model(in_vol[:,0,:,:], in_vol[:,1,:,:])
-        loss = multiscaleEPE(output, pose_label)
+        loss = RPE(output, pose_label)
         with torch.no_grad():
-            t_err, r_err = get_all_err(output, pose_label)
+            t_err, r_err = valid_RPE(output, pose_label)
         if i == 20:
             print("*"*30)
             print(output[0])
@@ -255,8 +255,8 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         optimizer.step()
         
         losses.update(loss.item(), in_vol.size(0))
-        losses_tran.update(t_err[0].item(), in_vol.size(0))
-        losses_rot.update(r_err[0].item(), in_vol.size(0))
+        losses_tran.update(t_err.item(), in_vol.size(0))
+        losses_rot.update(r_err.item(), in_vol.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -271,8 +271,8 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
             
     # tensorboard logger
     logger.add_scalar('train_loss_sum', losses.avg, epoch)
-    # logger.add_scalar('train_loss_tran', losses_tran.avg, epoch)
-    # logger.add_scalar('train_loss_rot', losses_rot.avg, epoch)
+    logger.add_scalar('train_loss_tran', losses_tran.avg, epoch)
+    logger.add_scalar('train_loss_rot', losses_rot.avg, epoch)
 
     return losses.avg
 
@@ -300,11 +300,13 @@ def validate(val_loader, model, class_func, epoch, logger):
             
             # compute output and loss
             output = model(in_vol[:,0,:,:], in_vol[:,1,:,:])
-            loss = multiscaleEPE(output, pose_label)
-            t_err, r_err = get_all_err(output, pose_label)
+            
+            loss = RPE(output, pose_label)
+            t_err, r_err = valid_RPE(output, pose_label)
+            
             losses.update(loss.item(), in_vol.size(0))
-            losses_tran.update(t_err[0].item(), in_vol.size(0))
-            losses_rot.update(r_err[0].item(), in_vol.size(0))
+            losses_tran.update(t_err.item(), in_vol.size(0))
+            losses_rot.update(r_err.item(), in_vol.size(0))
             
             # measure elapsed time
             batch_time.update(time.time() - end)

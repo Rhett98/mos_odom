@@ -20,8 +20,8 @@ def translationError(pose_error):
 def RPE(input_m, target_m):
     pose_error = torch.bmm(torch.inverse(input_m), target_m)
     # err = torch.norm(pose_error-torch.eye(4))
-    err = torch.norm(pose_error - torch.eye(4).unsqueeze(0).expand_as(pose_error), dim=(1, 2))
-    return err 
+    err = torch.norm(pose_error - torch.eye(4).unsqueeze(0).expand_as(pose_error).cuda(), dim=(1, 2))
+    return torch.mean(err) 
 
 # def RPE(input_m, target_m):
 #     pose_error = torch.bmm(torch.inverse(input_m), target_m)
@@ -35,7 +35,7 @@ def valid_RPE(input_m, target_m):
     t_err = translationError(pose_error)
     return t_err, r_err
 
-def multiscaleEPE(network_output, target, weights=None):
+def multiscaleRPE(network_output, target, weights=None):
     if type(network_output) not in [tuple, list]:
         network_output = [network_output]
     if weights is None:
@@ -54,24 +54,9 @@ def get_all_err(network_output, target):
     r_err_list = []
     for i in range(len(network_output)):
         t_err , r_err = valid_RPE(network_output[i], target)
-        t_err_list.append(t_err)
-        r_err_list.append(r_err)
+        t_err_list.append(torch.mean(t_err))
+        r_err_list.append(torch.mean(r_err))
     return t_err_list, r_err_list
-
-def rotation_error(R_gt, R_est):
-    # 将旋转矩阵或旋转向量转换为四元数
-    q_gt = F.normalize(torch.quaternion.from_rotation_matrix(R_gt), dim=-1)
-    q_est = F.normalize(torch.quaternion.from_rotation_matrix(R_est), dim=-1)
-
-    # 计算四元数之间的角度差
-    q_diff = q_gt.inverse() * q_est
-    angle_diff = 2 * torch.acos(torch.clamp(q_diff.real, -1, 1))
-
-    # 将角度差转换为度量单位（如弧度或角度）
-    # 这里使用弧度作为度量单位
-    error = angle_diff.mean()
-
-    return error
 
 if __name__ == '__main__':
     x = torch.Tensor([[[ 0.9996, -0.0287,  0.0053,  0.1721],
