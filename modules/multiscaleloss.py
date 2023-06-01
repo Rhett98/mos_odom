@@ -33,7 +33,7 @@ def valid_RPE(input_m, target_m):
     pose_error = torch.bmm(torch.inverse(input_m), target_m)
     r_err = rotationError(pose_error)
     t_err = translationError(pose_error)
-    return t_err, r_err
+    return torch.mean(r_err), torch.mean(t_err)
 
 def multiscaleRPE(network_output, target, weights=None):
     if type(network_output) not in [tuple, list]:
