@@ -277,7 +277,7 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
     return losses.avg
 
     
-def validate(val_loader, model, class_func, epoch, logger):
+def validate(val_loader, model, epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
