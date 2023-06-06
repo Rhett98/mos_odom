@@ -123,11 +123,11 @@ class User():
         proj_in = proj_in.cuda()
         print(path_name)
         #compute output
-        output = self.model(proj_in)
+        output = self.model(proj_in[:,0,:,:], proj_in[:,1,:,:])
 
         # save pose
         # relative_matrix = get_transformation_matrix_quaternion(tran, rot)
-        relative_matrix = output[0]
+        relative_matrix = output.cpu()
 
         pose_path = os.path.join(self.logdir, "sequences",
                             path_seq, "pose_pre.txt")

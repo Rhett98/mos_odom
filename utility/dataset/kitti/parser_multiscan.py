@@ -499,7 +499,7 @@ class Parser():
                                                learning_map_inv=self.learning_map_inv,
                                                sensor=self.sensor,
                                                max_points=max_points,
-                                               transform=True,
+                                               transform=False,
                                                gt=self.gt,
                                                drop_few_static_frames=False)
 

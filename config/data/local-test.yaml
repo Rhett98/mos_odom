@@ -163,8 +163,10 @@ split: # sequence numbers
   train:
     # - 6
     # - 7
-    - 24
+    # - 25
+    - 25
   valid:
-    - 8
+    # - 8
+    - 24
   test:
     - 9

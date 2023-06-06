@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from modules.utils import T2quat_tran
 
 def rotationError(pose_error):
     a = pose_error[:,0,0]
@@ -57,6 +58,33 @@ def get_all_err(network_output, target):
         t_err_list.append(torch.mean(t_err))
         r_err_list.append(torch.mean(r_err))
     return t_err_list, r_err_list
+
+class scaleHWSLoss(nn.Module):
+    """ Geometric loss function from PoseNet paper """
+    def __init__(self, sx=0.0, sq=-2.5, eps=1e-6, weight=None):
+        super(scaleHWSLoss, self).__init__()
+        self.sx = nn.Parameter(torch.Tensor([sx])).cuda()
+        self.sq = nn.Parameter(torch.Tensor([sq])).cuda()
+        self.l1_loss = nn.L1Loss()
+        self.l2_loss = nn.MSELoss()
+        self.weight = weight
+        if self.weight is None:
+            self.weight = [1.6, 0.8, 0.4, 0.2, 0.1]  # as in original article
+              
+    def forward(self, network_output, target): 
+        assert(len(self.weight) == len(network_output)) 
+        if type(network_output) not in [tuple, list]:
+            network_output = [network_output] 
+        loss = 0 
+        for i in range(len(network_output)):
+            q ,t = T2quat_tran(network_output[i])
+            q_gt ,t_gt = T2quat_tran(target)
+            loss_q = self.l2_loss(q, q_gt)
+            loss_t = self.l1_loss(t, t_gt)   
+            loss += self.weight[i]*(torch.exp(-self.sx)*loss_t + self.sx \
+                + torch.exp(-self.sq)*loss_q + self.sq)
+        
+        return loss
 
 if __name__ == '__main__':
     x = torch.Tensor([[[ 0.9996, -0.0287,  0.0053,  0.1721],

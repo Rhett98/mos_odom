@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter as Logger
 
 from utility.dataset.kitti.parser_multiscan_pwc import Parser
 from modules.pwclo import PWCNet
-from modules.multiscaleloss import multiscaleRPE, get_all_err, RPE, valid_RPE
+from modules.multiscaleloss import scaleHWSLoss
 from utility.warmupLR import *
 
 
@@ -150,6 +150,7 @@ def main_worker(args):
     else:
         raise NotImplementedError
     
+    loss_fn = scaleHWSLoss()
     # Use warmup learning rate
     # post decay and step sizes come in epochs and we want it in steps
     steps_per_epoch = parser.get_train_size()
@@ -185,7 +186,7 @@ def main_worker(args):
     best_valid_iou = 0
     for epoch in range(start_epoch, max_epoch):
         # train for one epoch
-        train_iou = train_epoch(train_loader, model, optimizer, scheduler, epoch, max_epoch, tb_logger)
+        train_iou = train_epoch(train_loader, model, loss_fn, optimizer, scheduler, epoch, max_epoch, tb_logger)
         # checkpoint save
         if train_iou > best_train_iou:
             best_train_iou = train_iou
@@ -201,22 +202,22 @@ def main_worker(args):
                 'state_dict': model.state_dict(),
             }, args.log, suffix='')
             
-        if epoch % ARCH["train"]["report_epoch"] == 0:
-            # evaluate on validation set
-            print("*" * 70)
-            valid_iou = validate(valid_loader, model, epoch, tb_logger)
-            if valid_iou > best_valid_iou:
-                best_valid_iou = valid_iou
-                save_checkpoint({
-                    'epoch': epoch + 1,
-                    'arch': 'motion',
-                    'state_dict': model.state_dict(),
-                }, args.log, suffix='_valid_best')
+        # if epoch % ARCH["train"]["report_epoch"] == 0:
+        #     # evaluate on validation set
+        #     print("*" * 70)
+        #     valid_iou = validate(valid_loader, model, epoch, tb_logger)
+        #     if valid_iou > best_valid_iou:
+        #         best_valid_iou = valid_iou
+        #         save_checkpoint({
+        #             'epoch': epoch + 1,
+        #             'arch': 'motion',
+        #             'state_dict': model.state_dict(),
+        #         }, args.log, suffix='_valid_best')
         print('Finished One Epoch Training and Save Ckpt!')
     print("*" * 80)
     print('Finished Training')
         
-def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logger):
+def train_epoch(train_loader, model, loss_fn, optimizer, scheduler, epoch, max_epoch, logger):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Losses', ':.4f')
@@ -236,27 +237,30 @@ def train_epoch(train_loader, model, optimizer, scheduler,epoch, max_epoch, logg
         data_time.update(time.time() - end)
         in_vol = in_vol.cuda()
         pose_label = pose_label[-1].cuda().float()
-        
+        # print("******" , path_name , "***********")
+        # print(in_vol[0,0,0,0,10:20])
+        # print(in_vol[0,1,0,0,10:20])
+        # print(pose_label)
         # compute output and loss
         optimizer.zero_grad()
         output = model(in_vol[:,0,:,:], in_vol[:,1,:,:])
-        loss = RPE(output, pose_label)
-        with torch.no_grad():
-            t_err, r_err = valid_RPE(output, pose_label)
-        if i == 20:
-            print("*"*30)
-            print(output[0])
-            print("*"*10)
-            print(pose_label)
-            print("*"*10)
-            print(loss)
+        loss = loss_fn(output, pose_label)
+        # with torch.no_grad():
+        #     t_err, r_err = valid_RPE(output, pose_label)
+        # if i == 20:
+        print("*"*30)
+        print(output)
+        print("*"*10)
+        print(pose_label)
+        print("*"*10)
+        print(loss)
         # compute gradient and do SGD step
         loss.backward()
         optimizer.step()
         
         losses.update(loss.item(), in_vol.size(0))
-        losses_tran.update(t_err.item(), in_vol.size(0))
-        losses_rot.update(r_err.item(), in_vol.size(0))
+        # losses_tran.update(t_err.item(), in_vol.size(0))
+        # losses_rot.update(r_err.item(), in_vol.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)

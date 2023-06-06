@@ -220,8 +220,7 @@ class SemanticKitti(Dataset):
         current_pose = self.poses[seq][current_index]
         proj_full = torch.Tensor()
         relative_pose_list = []
-        # trans_list = []
-        # quaternion_list = []
+
         # index is now looping from first scan in input sequence to current scan
         for index in range(start_index, current_index+1):
         # for index in range(start_index, start_index + 1):
@@ -234,12 +233,10 @@ class SemanticKitti(Dataset):
                 for i in range(self.n_input_scans):
                     exec("residual_file_" + str(i+1) + " = " + "self.residual_files_" + str(i+1) + "[seq][index]")
             index_pose = self.poses[seq][index]
+            # print(index, current_index)
             # get translation and _quaternion between index_pose and current_pose
             if index != current_index:
                 relative_pose_list.append(np.linalg.inv(index_pose).dot(current_pose))
-                # trans_list.append(get_translation_from_transformation_matrix(relative_pose))
-                # # quaternion_list.append(get_quaternion_from_transformation_matrix(relative_pose))
-                # quaternion_list.append(get_euler_from_transformation_matrix(relative_pose))
             # open a semantic laserscan
             DA = False
             flip_sign = False
@@ -254,7 +251,6 @@ class SemanticKitti(Dataset):
                     if random.random() > 0.5:
                             rot = True
                     drop_points = random.uniform(0, 0.5)
-
             if self.gt:
                 scan = SemLaserScan(self.color_map,
                                     project=True,
@@ -280,7 +276,6 @@ class SemanticKitti(Dataset):
 
             # open and obtain (transformed) scan
             scan.open_scan(scan_file, index_pose, current_pose, if_transform=self.transform_mod)
-
             if self.gt:
                 scan.open_label(label_file)
                 # map unused classes to used classes (also for projection)
@@ -289,6 +284,7 @@ class SemanticKitti(Dataset):
 
             # make a tensor of the uncompressed data (with the max num points)
             unproj_n_points = scan.points.shape[0]
+            # print("unproj_n_points ",unproj_n_points)
             unproj_xyz = torch.full((self.max_points, 3), -1.0, dtype=torch.float)
             unproj_xyz[:unproj_n_points] = torch.from_numpy(scan.points)
             unproj_range = torch.full([self.max_points], -1.0, dtype=torch.float)
@@ -304,6 +300,7 @@ class SemanticKitti(Dataset):
             # get points and labels
             proj_range = torch.from_numpy(scan.proj_range).clone()
             proj_xyz = torch.from_numpy(scan.proj_xyz).clone()
+            # print("proj_xyz", proj_xyz[30,50:60,0])
             proj_remission = torch.from_numpy(scan.proj_remission).clone()
             proj_mask = torch.from_numpy(scan.proj_mask)
             if self.gt:
@@ -319,7 +316,7 @@ class SemanticKitti(Dataset):
             if self.use_residual:
                 for i in range(self.n_input_scans):
                     exec("proj_residuals_" + str(i+1) + " = torch.Tensor(np.load(residual_file_" + str(i+1) + "))")
-            
+            # print(proj_xyz.clone().permute(2, 0, 1))
             proj = torch.cat([proj_range.unsqueeze(0).clone(),      # torch.Size([1, 64, 2048])
                             proj_xyz.clone().permute(2, 0, 1),    # torch.Size([3, 64, 2048])
                             proj_remission.unsqueeze(0).clone(),]) # torch.Size([1, 64, 2048])
@@ -343,7 +340,6 @@ class SemanticKitti(Dataset):
         path_split = path_norm.split(os.sep)
         path_seq = path_split[-3]
         path_name = path_split[-1].replace(".bin", ".label")
-
 
         return proj_full, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, \
                      unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points, relative_pose_list#trans_list, quaternion_list
@@ -501,7 +497,7 @@ class Parser():
                                                learning_map_inv=self.learning_map_inv,
                                                sensor=self.sensor,
                                                max_points=max_points,
-                                               transform=True,
+                                               transform=False,
                                                gt=self.gt,
                                                drop_few_static_frames=False)
 
@@ -685,7 +681,8 @@ if __name__ == '__main__':
                             workers=ARCH["train"]["workers"],
                             gt=True,
                             shuffle_train=False)
-    loader = parse.get_train_set()
+    # loader = parse.get_train_set()
+    loader = parse.train_dataset
     # assert len(loader) > 0
     # load calibrations
     calib_file = os.path.join("/home/yu/Resp/dataset/sequences/08/calib.txt")
@@ -694,22 +691,18 @@ if __name__ == '__main__':
     T_velo_cam = np.linalg.inv(T_cam_velo)
     last_pose = np.eye(4)
     # loader = parse.train_dataset
-    # for i in range(5,10):
-    #     proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,trans,rot = loader.__getitem__(i)
+    # for i in range(5,15):
+    #     proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,pose = loader.__getitem__(i)
     #     print('********* '+ str(i) + " ***********")
-    #     print(trans[-1],rot[-1])
-    #     print(get_transformation_matrix_euler(trans[-1],rot[-1]))
-    #     print(torch.norm(rot[-1]))
+    #     print(path_name)
+    #     print(pose)
     for i, (proj_in, proj_mask,proj_labels, _, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, npoints,pose) in enumerate(loader):
         # relative_matrix = get_transformation_matrix_quaternion(trans[-1], rot[-1])
         # last_pose = write_poses("posetest.txt", np.dot(T_cam_velo,np.dot(relative_matrix,T_velo_cam)), last_pose)
         print('********* '+ str(i) + " ***********")
         print(pose)
-        # print('r:',proj_in[0,0,0,10:15,20:25])
-        # print('x:',proj_in[0,0,1,10:15,20:25])
-        # print(trans[-1],rot[-1])
-        # print(get_transformation_matrix_euler(trans[-1],rot[-1]))
-        # print(torch.norm(rot[-1]))
+        print('x:',proj_in[0,0,10:15,20:25])
+        print('y:',proj_in[1,0,10:15,20:25])
     # pose_file = os.path.join("/home/yu/Resp/dataset/sequences/06/poses.txt")
     # poses = np.array(load_poses(pose_file))
     # inv_frame0 = np.linalg.inv(poses[0])
