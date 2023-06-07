@@ -76,15 +76,22 @@ class scaleHWSLoss(nn.Module):
         if type(network_output) not in [tuple, list]:
             network_output = [network_output] 
         loss = 0 
+        loss_q_list = []
+        loss_t_list = []
+        loss_sum_list = []
         for i in range(len(network_output)):
             q ,t = T2quat_tran(network_output[i])
             q_gt ,t_gt = T2quat_tran(target)
             loss_q = self.l2_loss(q, q_gt)
-            loss_t = self.l1_loss(t, t_gt)   
-            loss += self.weight[i]*(torch.exp(-self.sx)*loss_t + self.sx \
+            loss_q_list.append(loss_q.data)
+            loss_t = self.l1_loss(t, t_gt)  
+            loss_t_list.append(loss_t.data) 
+            loss_sum = (torch.exp(-self.sx)*loss_t + self.sx \
                 + torch.exp(-self.sq)*loss_q + self.sq)
+            loss_sum_list.append(loss_sum.data)
+            loss += self.weight[i]*loss_sum
         
-        return loss
+        return loss, loss_t_list, loss_q_list, loss_sum_list
 
 if __name__ == '__main__':
     x = torch.Tensor([[[ 0.9996, -0.0287,  0.0053,  0.1721],

@@ -133,7 +133,7 @@ def main_worker(args):
     print("=> creating model '{}'".format(args.arch_cfg))
     with torch.no_grad():
         model = PWCNet()
-    
+    setup_seed(32873)
     if torch.cuda.is_available():
         model.cuda()
         cudnn.benchmark = True
@@ -242,21 +242,42 @@ def train_epoch(train_loader, model, loss_fn, optimizer, scheduler, epoch, max_e
         # print(in_vol[0,1,0,0,10:20])
         # print(pose_label)
         # compute output and loss
-        optimizer.zero_grad()
         output = model(in_vol[:,0,:,:], in_vol[:,1,:,:])
-        loss = loss_fn(output, pose_label)
+        loss, loss_t, loss_q, loss_sum = loss_fn(output, pose_label)
         # with torch.no_grad():
         #     t_err, r_err = valid_RPE(output, pose_label)
         # if i == 20:
-        print("*"*30)
-        print(output)
-        print("*"*10)
-        print(pose_label)
-        print("*"*10)
-        print(loss)
+        # print("*"*30)
+        # print(output)
+        # print("*"*10)
+        # print(pose_label)
+        # print("*"*10)
+        # print(loss)
+        # print(loss_t)
+        # print(loss_q)
+        # print(loss_sum)
+        # print("*"*10)
         # compute gradient and do SGD step
+        optimizer.zero_grad()
+        
+        for name, parms in model.named_parameters():	
+                print('-->name:', name)
+                # print('-->para:', parms)
+                print('-->grad_requirs:',parms.requires_grad)
+                print('-->grad_value:',parms.grad)
+                print("===")
         loss.backward()
         optimizer.step()
+        print("=============更新之后===========")
+        for name, parms in model.named_parameters():	
+            print('-->name:', name)
+            print('-->para:', parms)
+            print('-->grad_requirs:',parms.requires_grad)
+            print('-->grad_value:',parms.grad)
+            print("===")
+        print(optimizer)
+        input("=====迭代结束=====")
+
         
         losses.update(loss.item(), in_vol.size(0))
         # losses_tran.update(t_err.item(), in_vol.size(0))
@@ -305,12 +326,12 @@ def validate(val_loader, model, epoch, logger):
             # compute output and loss
             output = model(in_vol[:,0,:,:], in_vol[:,1,:,:])
             
-            loss = RPE(output, pose_label)
-            t_err, r_err = valid_RPE(output, pose_label)
+            # loss = RPE(output, pose_label)
+            # t_err, r_err = valid_RPE(output, pose_label)
             
-            losses.update(loss.item(), in_vol.size(0))
-            losses_tran.update(t_err.item(), in_vol.size(0))
-            losses_rot.update(r_err.item(), in_vol.size(0))
+            # losses.update(loss.item(), in_vol.size(0))
+            # losses_tran.update(t_err.item(), in_vol.size(0))
+            # losses_rot.update(r_err.item(), in_vol.size(0))
             
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -391,6 +412,16 @@ class ProgressMeter(object):
         num_digits = len(str(num_batches // 1))
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
+    
+import numpy as np   
+ 
+def setup_seed(seed):
+     torch.manual_seed(seed)
+     torch.cuda.manual_seed_all(seed)
+     np.random.seed(seed)
+    #  random.seed(seed)
+     torch.backends.cudnn.deterministic = True
+
 
 if __name__ == '__main__':   
     main()

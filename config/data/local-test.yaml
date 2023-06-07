@@ -164,7 +164,7 @@ split: # sequence numbers
     # - 6
     # - 7
     # - 25
-    - 25
+    - 26
   valid:
     # - 8
     - 24
