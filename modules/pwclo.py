@@ -8,9 +8,23 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from spatial_correlation_sampler import SpatialCorrelationSampler
 
+from spatial_correlation_sampler import SpatialCorrelationSampler
 from modules.utils import quatt2T, transformPC
+
+class residual_conv(nn.Module):
+    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):
+        super(residual_conv, self).__init__()
+        
+        self.conv1 = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, 
+                        padding=padding, dilation=dilation, bias=True)
+        self.relu = nn.LeakyReLU(0.1)
+        
+    def forward(self, x):        
+        out = self.conv1(x)  
+        out += x
+        out = self.relu(out)        
+        return out
 
 def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):   
     return nn.Sequential(
@@ -39,7 +53,6 @@ class PyramidBlock(nn.Module):
 
         return out
 
-
 class PWCNet(nn.Module):
     """ Odometry regression network"""
     def __init__(self):
@@ -62,10 +75,10 @@ class PWCNet(nn.Module):
                                                         padding=0,
                                                         dilation_patch=1)
         self.leakyRELU = nn.LeakyReLU(0.1)
-        # self.leakyRELU = nn.ReLU(True)
+        
         
         # odom coarse
-        self.pool = nn.AvgPool2d(2,2)
+        # self.pool = nn.AvgPool2d(2,2)
         self.q5_predict = nn.Conv1d(in_channels=64,out_channels=4,kernel_size=1)
         self.t5_predict = nn.Conv1d(in_channels=64,out_channels=3,kernel_size=1)
         self.q4_predict = nn.Conv1d(in_channels=256,out_channels=4,kernel_size=1)
@@ -74,6 +87,8 @@ class PWCNet(nn.Module):
         self.t3_predict = nn.Conv1d(in_channels=1024,out_channels=3,kernel_size=1)
         self.q2_predict = nn.Conv1d(in_channels=4096,out_channels=4,kernel_size=1)
         self.t2_predict = nn.Conv1d(in_channels=4096,out_channels=3,kernel_size=1)
+        self.q1_predict = nn.Conv1d(in_channels=16384,out_channels=4,kernel_size=1)
+        self.t1_predict = nn.Conv1d(in_channels=16384,out_channels=3,kernel_size=1)
         # self.q3_predict = nn.Sequential(nn.Conv1d(in_channels=1024,out_channels=512,kernel_size=1),
         #                                 nn.Conv1d(in_channels=512,out_channels=4,kernel_size=1))
         # self.t3_predict = nn.Sequential(nn.Conv1d(in_channels=1024,out_channels=512,kernel_size=1),
@@ -82,12 +97,12 @@ class PWCNet(nn.Module):
         #                                 nn.Conv1d(in_channels=512,out_channels=4,kernel_size=1))
         # self.t2_predict = nn.Sequential(nn.Conv1d(in_channels=4096,out_channels=512,kernel_size=1),
         #                                 nn.Conv1d(in_channels=512,out_channels=3,kernel_size=1))
-        self.q1_predict = nn.Sequential(nn.Conv1d(in_channels=16384,out_channels=4096,kernel_size=1),
-                                        # nn.Conv1d(in_channels=4096,out_channels=512,kernel_size=1),
-                                        nn.Conv1d(in_channels=4096,out_channels=4,kernel_size=1))
-        self.t1_predict = nn.Sequential(nn.Conv1d(in_channels=16384,out_channels=4096,kernel_size=1),
-                                        # nn.Conv1d(in_channels=4096,out_channels=512,kernel_size=1),
-                                        nn.Conv1d(in_channels=4096,out_channels=3,kernel_size=1))
+        # self.q1_predict = nn.Sequential(nn.Conv1d(in_channels=16384,out_channels=4096,kernel_size=1),
+        #                                 # nn.Conv1d(in_channels=4096,out_channels=512,kernel_size=1),
+        #                                 nn.Conv1d(in_channels=4096,out_channels=4,kernel_size=1))
+        # self.t1_predict = nn.Sequential(nn.Conv1d(in_channels=16384,out_channels=4096,kernel_size=1),
+        #                                 # nn.Conv1d(in_channels=4096,out_channels=512,kernel_size=1),
+        #                                 nn.Conv1d(in_channels=4096,out_channels=3,kernel_size=1))
         
         # odom refine
         nd = self.p_size**2
@@ -154,12 +169,12 @@ class PWCNet(nn.Module):
         self.dc_conv5 = conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16)
         self.dc_conv6 = conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1)
         self.dc_conv7 = predict_flow(32)
-        self.downfeat1 = conv(8, 2, kernel_size=3, stride=2) 
+        # self.downfeat1 = conv(8, 2, kernel_size=3, stride=2) 
         
         # init layers
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal(m.weight.data, mode='fan_in')
+                nn.init.kaiming_uniform_(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
                     
@@ -287,7 +302,8 @@ class PWCNet(nn.Module):
         q4 = self.q4_predict(in_feat5).view(-1,4)
         t4 = self.t4_predict(in_feat5).view(-1,3)
         # with torch.no_grad():
-        pose4 = torch.bmm(pose5, quatt2T(t4,q4/torch.norm(q4)))
+        # pose4 = torch.bmm(pose5, quatt2T(t4,q4/torch.norm(q4)))
+        pose4 = quatt2T(t4,q4/torch.norm(q4))
 
         # pyramid 4 
         warp4 = self.warp(f14, up_flow5)
@@ -310,8 +326,8 @@ class PWCNet(nn.Module):
         q3 = self.q3_predict(in_feat4).view(-1,4)
         t3 = self.t3_predict(in_feat4).view(-1,3)
         # with torch.no_grad():
-        pose3 = torch.bmm(pose4, quatt2T(t3,q3/torch.norm(q3)))
-
+        # pose3 = torch.bmm(pose4, quatt2T(t3,q3/torch.norm(q3)))
+        pose3 = quatt2T(t3,q3/torch.norm(q3))
         
         # pyramid 3 
         warp3 = self.warp(f13, up_flow4)
@@ -332,8 +348,9 @@ class PWCNet(nn.Module):
         q2 = self.q2_predict(in_feat3).view(-1,4)
         t2 = self.t2_predict(in_feat3).view(-1,3)
         # with torch.no_grad():
-        pose2 = torch.bmm(pose3, quatt2T(t2,q2/torch.norm(q2)))
-
+        # pose2 = torch.bmm(pose3, quatt2T(t2,q2/torch.norm(q2)))
+        pose2 = quatt2T(t2,q2/torch.norm(q2))
+        
         # pyramid 2 
         warp2 = self.warp(f12, up_flow3) 
         corr2 = self.corr(warp2, f22)
@@ -350,14 +367,15 @@ class PWCNet(nn.Module):
         flow2 = flow2 + self.dc_conv7(self.dc_conv6(self.dc_conv5(x)))
         up_flow2 = self.deconv2(flow2)
         # odom predict
-        x1_warp = transformPC(x1, pose4)
+        x1_warp = transformPC(x1, pose2)
         in_feat2 = self.downfeat2(torch.cat((x1_warp, y1, up_flow2),1)).view(up_flow2.shape[0], -1, 1)
         # print("in_feat2",in_feat2)
         q1 = self.q1_predict(in_feat2).view(-1,4)
         t1 = self.t1_predict(in_feat2).view(-1,3)
         # with torch.no_grad():
-        pose1 = torch.bmm(pose2, quatt2T(t1,q1/torch.norm(q1)))
-
+        # pose1 = torch.bmm(pose2, quatt2T(t1,q1/torch.norm(q1)))
+        pose1 = quatt2T(t1,q1/torch.norm(q1))
+        
         return pose1, pose2, pose3, pose4, pose5
 
 
